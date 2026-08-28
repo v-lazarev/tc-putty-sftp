@@ -9,6 +9,8 @@ without Pageant, puttygen, or a temporary converted private-key file.
 Current PPK scope: v3, ssh-rsa, Encryption: none, RSA 2048-8192 bits.
 Encrypted PPK, PPK v2, ECDSA/Ed25519 keys, and PuTTY proxy/jump settings are
 not imported in this MVP. Sessions with proxy settings are blocked.
+Unsupported PPK metadata is identified before a network connection is opened.
+Key-file paths and private key material are not written to connection logs.
 
 PuTTY sessions remain owned by PuTTY. Edit, rename, or delete them there and
 refresh the plugin root in Total Commander. Existing plugin INI connections

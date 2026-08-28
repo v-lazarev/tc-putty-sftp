@@ -935,12 +935,16 @@ void libssh2_trace_handler_callback(LIBSSH2_SESSION *session, void *param, const
 }
 
 int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKeyFile, char *statusBuffer,
-                         int statusBufferSize, int *loop, DWORD *lasttime)
+                         int statusBufferSize, int *loop, DWORD *lasttime, bool *localErrorShown)
 {
+    if (localErrorShown)
+        *localErrorShown = false;
     if (!libssh2_userauth_publickey_frommemory)
     {
         char error[] = "The loaded libssh2.dll does not support in-memory key authentication.";
         ShowError(error);
+        if (localErrorShown)
+            *localErrorShown = true;
         return LIBSSH2_ERROR_METHOD_NOT_SUPPORTED;
     }
 
@@ -954,6 +958,8 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
         std::vector<char> message(error.begin(), error.end());
         message.push_back(0);
         ShowError(message.data());
+        if (localErrorShown)
+            *localErrorShown = true;
         return loadResult == tcputty::PpkLoadResult::Unsupported ? LIBSSH2_ERROR_METHOD_NOT_SUPPORTED
                                                                  : LIBSSH2_ERROR_FILE;
     }
@@ -982,6 +988,26 @@ int SftpConnect(pConnectSettings ConnectSettings)
     if (!LoadSSHLib())
         return SFTP_FAILED;
 
+    if (tcputty::HasPpkExtension(ConnectSettings->privkeyfile) &&
+        (ConnectSettings->user[0] != 0 || strstr(ConnectSettings->privkeyfile, "%USER%") == nullptr))
+    {
+        char ppkPath[MAX_PATH] = {};
+        strlcpy(ppkPath, ConnectSettings->privkeyfile, sizeof(ppkPath) - 1);
+        ReplaceSubString(ppkPath, "%USER%", ConnectSettings->user, sizeof(ppkPath) - 1);
+        ReplaceEnvVars(ppkPath, sizeof(ppkPath) - 1);
+        tcputty::PpkKeyInfo ppkInfo;
+        std::string ppkError;
+        if (tcputty::InspectPpkFile(ppkPath, ppkInfo, ppkError) != tcputty::PpkLoadResult::Success)
+        {
+            if (ppkError.empty())
+                ppkError = "The PuTTY private key header could not be validated.";
+            std::vector<char> message(ppkError.begin(), ppkError.end());
+            message.push_back(0);
+            ShowError(message.data());
+            return SFTP_FAILED;
+        }
+    }
+
     TemporarySshConfigOverrideGuard sshConfigOverrideGuard(ConnectSettings);
     if (ConnectSettings->protocoltype == 3)
     {
@@ -1002,8 +1028,8 @@ int SftpConnect(pConnectSettings ConnectSettings)
 
     char detailBuf[512];
     snprintf(detailBuf, sizeof(detailBuf), "Attempting connection - PubKey: %s, PrivKey: %s, UseAgent: %d",
-             ConnectSettings->pubkeyfile[0] ? ConnectSettings->pubkeyfile : "none",
-             ConnectSettings->privkeyfile[0] ? ConnectSettings->privkeyfile : "none", ConnectSettings->useagent);
+             ConnectSettings->pubkeyfile[0] ? "configured" : "none",
+             ConnectSettings->privkeyfile[0] ? "configured" : "none", ConnectSettings->useagent);
     LogConnectionAttempt(ConnectSettings->DisplayName, ConnectSettings->server, ConnectSettings->customport,
                          ConnectSettings->user, ConnectSettings->proxytype, "ATTEMPTING", detailBuf);
 
@@ -1857,13 +1883,16 @@ int SftpConnect(pConnectSettings ConnectSettings)
 
             if (tcputty::HasPpkExtension(privkeyfile))
             {
-                auth = AuthenticatePpkV3Rsa(ConnectSettings, privkeyfile, buf, sizeof(buf), &loop, &lasttime);
+                bool localErrorShown = false;
+                auth = AuthenticatePpkV3Rsa(ConnectSettings, privkeyfile, buf, sizeof(buf), &loop, &lasttime,
+                                            &localErrorShown);
                 if (auth == LIBSSH2_ERROR_AUTHENTICATION_FAILED)
                     auth_pw = 1;
                 else if (auth)
                 {
                     SftpLogLastError("libssh2_userauth_publickey_frommemory: ", auth);
-                    ShowErrorId(IDS_ERR_AUTH_PUBKEY);
+                    if (!localErrorShown)
+                        ShowErrorId(IDS_ERR_AUTH_PUBKEY);
                 }
             }
             else

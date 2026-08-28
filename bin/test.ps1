@@ -70,6 +70,7 @@ try {
     $sessionRegistryCreated = $true
 
     foreach ($suffix in @('x86', 'x64')) {
+        Invoke-TestExecutable -Path (Join-Path $TestOutput "ppk-diagnostics-$suffix.exe")
         $smokeArguments = if ($PpkPath) { @($PpkPath) } else { @() }
         Invoke-TestExecutable -Path (Join-Path $TestOutput "smoke-$suffix.exe") -Arguments $smokeArguments
         $wfx = if ($suffix -eq 'x86') { Join-Path $PluginRoot 'sftpplug.wfx' } else { Join-Path $PluginRoot 'sftpplug.wfx64' }

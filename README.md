@@ -24,6 +24,8 @@ the code baseline and the original 3.10 snapshot retained in its history. See
 - Pageant is disabled for generated PuTTY entries.
 - Unencrypted PuTTY PPK v3 RSA keys are authenticated directly from memory.
   No converted private key or temporary PEM file is written to disk.
+- Unsupported PPK versions, encryption, and key algorithms are identified
+  before a network connection is opened, with bounded metadata-only checks.
 - Host keys are stored as SHA-256 fingerprints. The normal plugin confirmation
   remains in place for first use and changed keys.
 
@@ -50,7 +52,8 @@ The built-in PPK loader intentionally accepts only:
 It validates the PPK HMAC-SHA-256, strictly parses SSH strings and positive
 mpints, imports the key through Windows CNG, verifies it by signing, and clears
 private working buffers after authentication. Private blobs, PEM data, and MAC
-inputs are not logged.
+inputs are not logged. Connection-attempt logs record only whether key files
+are configured; they do not include private- or public-key paths.
 
 Encrypted PPK files, PPK v2, Ed25519, ECDSA, PuTTY proxy/jump settings, and
 other PuTTY-specific connection commands are not yet imported. A session with
@@ -86,6 +89,9 @@ architectures, creates the release ZIP, and writes its SHA-256 checksum.
 
 `tests/smoke_tests.cpp` covers PuTTY name decoding, live registry enumeration,
 INI overlay preservation, and optional PPK parsing/CNG conversion.
+`tests/ppk_diagnostics_tests.cpp` generates an ephemeral TEST-ONLY RSA key at
+runtime and checks valid LF/CRLF/CR PPK files plus unsupported, corrupted,
+truncated, embedded-NUL, missing, empty, and oversized inputs.
 
 `tests/wfx_root_smoke.cpp` loads the compiled WFX through the public Total
 Commander API, enumerates its root, verifies the packaged transport, and can

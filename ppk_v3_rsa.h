@@ -37,6 +37,13 @@ struct MemoryKey
     SecureBuffer privateKeyPem;
 };
 
+struct PpkKeyInfo
+{
+    unsigned version = 0;
+    std::string algorithm;
+    std::string encryption;
+};
+
 enum class PpkLoadResult
 {
     Success,
@@ -47,6 +54,12 @@ enum class PpkLoadResult
 };
 
 bool HasPpkExtension(const char *path);
+
+// Reads and classifies only bounded PPK metadata. The comment and all key
+// material are deliberately omitted from PpkKeyInfo and error messages.
+// Success means the header is supported by LoadPpkV3Rsa, not that the complete
+// private key has already passed its integrity and CNG validation.
+PpkLoadResult InspectPpkFile(const char *path, PpkKeyInfo &info, std::string &errorMessage);
 
 // Supports only the deliberately narrow MVP format:
 // PuTTY-User-Key-File-3, ssh-rsa, Encryption: none.

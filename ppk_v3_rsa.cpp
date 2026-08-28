@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -122,6 +123,104 @@ bool ParseDecimal(const ByteView &value, size_t maximum, size_t &result)
         return false;
     result = number;
     return true;
+}
+
+bool CopySafeToken(const ByteView &value, size_t maximum, std::string &result)
+{
+    result.clear();
+    if (value.size == 0 || value.size > maximum)
+        return false;
+    for (size_t i = 0; i < value.size; ++i)
+    {
+        if (value.data[i] < 0x21 || value.data[i] > 0x7E)
+            return false;
+    }
+    result.assign(reinterpret_cast<const char *>(value.data), value.size);
+    return true;
+}
+
+struct PpkHeader
+{
+    ByteView algorithm;
+    ByteView encryption;
+};
+
+tcputty::PpkLoadResult ParsePpkHeader(const std::vector<LineView> &lines, PpkHeader &header,
+                                      tcputty::PpkKeyInfo &info, std::string &errorMessage)
+{
+    info = {};
+    header = {};
+    if (lines.empty())
+    {
+        errorMessage = "The PPK file is empty.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+
+    ByteView firstLine;
+    if (!HeaderValue(lines[0], "PuTTY-User-Key-File-", firstLine))
+    {
+        errorMessage = "The selected .ppk file does not contain a PuTTY private-key header.";
+        return tcputty::PpkLoadResult::NotPpk;
+    }
+
+    size_t separator = firstLine.size;
+    for (size_t i = 0; i + 1 < firstLine.size; ++i)
+    {
+        if (firstLine.data[i] == ':' && firstLine.data[i + 1] == ' ')
+        {
+            separator = i;
+            break;
+        }
+    }
+    if (separator == firstLine.size)
+    {
+        errorMessage = "The PuTTY private-key header is malformed.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+
+    ByteView versionValue = {firstLine.data, separator};
+    ByteView algorithmValue = {firstLine.data + separator + 2, firstLine.size - separator - 2};
+    size_t version = 0;
+    if (!ParseDecimal(versionValue, 99, version) || !CopySafeToken(algorithmValue, 128, info.algorithm))
+    {
+        errorMessage = "The PuTTY private-key version or algorithm name is invalid.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    info.version = static_cast<unsigned>(version);
+    header.algorithm = algorithmValue;
+
+    if (lines.size() < 2 || !HeaderValue(lines[1], "Encryption: ", header.encryption) ||
+        !CopySafeToken(header.encryption, 64, info.encryption))
+    {
+        errorMessage = "The PPK Encryption header is missing or invalid.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+
+    char message[256] = {};
+    if (info.version != 3)
+    {
+        snprintf(message, sizeof(message),
+                 "This is PuTTY PPK version %u; this release supports only PPK version 3.", info.version);
+        errorMessage = message;
+        return tcputty::PpkLoadResult::Unsupported;
+    }
+    if (info.algorithm != "ssh-rsa")
+    {
+        snprintf(message, sizeof(message), "This PPK uses %s; this release currently supports only ssh-rsa.",
+                 info.algorithm.c_str());
+        errorMessage = message;
+        return tcputty::PpkLoadResult::Unsupported;
+    }
+    if (info.encryption != "none")
+    {
+        snprintf(message, sizeof(message),
+                 "This PPK is encrypted with %s; version 0.1.x currently supports only unencrypted PPK v3 RSA keys.",
+                 info.encryption.c_str());
+        errorMessage = message;
+        return tcputty::PpkLoadResult::Unsupported;
+    }
+
+    return tcputty::PpkLoadResult::Success;
 }
 
 bool SplitLines(const tcputty::SecureBuffer &file, std::vector<LineView> &lines)
@@ -564,25 +663,49 @@ std::string Base64Public(const tcputty::SecureBuffer &data)
     return encoded;
 }
 
-bool ReadFileSecure(const char *path, tcputty::SecureBuffer &file)
+bool ReadFileSecure(const char *path, tcputty::SecureBuffer &file, std::string &errorMessage)
 {
+    file.Clear();
+    if (!path || !*path)
+    {
+        errorMessage = "The PPK path is empty.";
+        return false;
+    }
     int wideLength = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, path, -1, nullptr, 0);
     if (wideLength <= 0 || wideLength > 32768)
+    {
+        errorMessage = "The PPK path is empty or cannot be represented safely.";
         return false;
+    }
     std::vector<wchar_t> widePath(static_cast<size_t>(wideLength), L'\0');
     if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, path, -1, widePath.data(), wideLength) == 0)
+    {
+        errorMessage = "The PPK path cannot be converted to Unicode.";
         return false;
+    }
     HANDLE handle = CreateFileW(widePath.data(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                                 FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (handle == INVALID_HANDLE_VALUE)
+    {
+        errorMessage = "The PPK file does not exist or cannot be opened.";
         return false;
+    }
     LARGE_INTEGER size = {};
-    bool ok = GetFileSizeEx(handle, &size) && size.QuadPart > 0 && size.QuadPart <= kMaximumPpkSize;
+    bool sizeKnown = GetFileSizeEx(handle, &size) != FALSE;
+    bool ok = sizeKnown && size.QuadPart > 0 && size.QuadPart <= kMaximumPpkSize;
+    if (!sizeKnown)
+        errorMessage = "Windows could not determine the PPK file size.";
+    else if (size.QuadPart == 0)
+        errorMessage = "The PPK file is empty.";
+    else if (size.QuadPart > kMaximumPpkSize)
+        errorMessage = "The PPK file exceeds the 64 KiB safety limit.";
     if (ok)
     {
         file.Resize(static_cast<size_t>(size.QuadPart));
         DWORD read = 0;
         ok = ReadFile(handle, file.Data(), static_cast<DWORD>(file.Size()), &read, nullptr) && read == file.Size();
+        if (!ok)
+            errorMessage = "The PPK file could not be read completely.";
     }
     CloseHandle(handle);
     if (!ok)
@@ -676,6 +799,27 @@ bool HasPpkExtension(const char *path)
     return extension && _stricmp(extension, ".ppk") == 0;
 }
 
+PpkLoadResult InspectPpkFile(const char *path, PpkKeyInfo &info, std::string &errorMessage)
+{
+    info = {};
+    errorMessage.clear();
+    SecureBuffer file;
+    if (!path || !*path || !ReadFileSecure(path, file, errorMessage))
+    {
+        if (errorMessage.empty())
+            errorMessage = "The PPK path is empty.";
+        return PpkLoadResult::IoError;
+    }
+    std::vector<LineView> lines;
+    if (!SplitLines(file, lines))
+    {
+        errorMessage = "The PPK text structure is invalid.";
+        return PpkLoadResult::Invalid;
+    }
+    PpkHeader header;
+    return ParsePpkHeader(lines, header, info, errorMessage);
+}
+
 PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorMessage)
 {
     key.publicKeyFile.clear();
@@ -683,9 +827,10 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorM
     errorMessage.clear();
 
     SecureBuffer file;
-    if (!path || !ReadFileSecure(path, file))
+    if (!path || !*path || !ReadFileSecure(path, file, errorMessage))
     {
-        errorMessage = "Unable to read the PPK file (maximum supported size is 64 KiB).";
+        if (errorMessage.empty())
+            errorMessage = "The PPK path is empty.";
         return PpkLoadResult::IoError;
     }
     std::vector<LineView> lines;
@@ -695,43 +840,25 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorM
         return PpkLoadResult::Invalid;
     }
 
-    ByteView algorithm;
-    if (!HeaderValue(lines[0], "PuTTY-User-Key-File-", algorithm))
-        return PpkLoadResult::NotPpk;
-    ByteView versionAndAlgorithm = algorithm;
-    const char versionPrefix[] = "3: ";
-    if (versionAndAlgorithm.size < sizeof(versionPrefix) - 1 ||
-        memcmp(versionAndAlgorithm.data, versionPrefix, sizeof(versionPrefix) - 1) != 0)
-    {
-        errorMessage = "Only PuTTY PPK version 3 is supported by this MVP.";
-        return PpkLoadResult::Unsupported;
-    }
-    algorithm.data += sizeof(versionPrefix) - 1;
-    algorithm.size -= sizeof(versionPrefix) - 1;
-    if (!Equals(algorithm, "ssh-rsa"))
-    {
-        errorMessage = "Only ssh-rsa PPK keys are supported by this MVP.";
-        return PpkLoadResult::Unsupported;
-    }
+    PpkHeader header;
+    PpkKeyInfo info;
+    PpkLoadResult headerResult = ParsePpkHeader(lines, header, info, errorMessage);
+    if (headerResult != PpkLoadResult::Success)
+        return headerResult;
+    ByteView algorithm = header.algorithm;
+    ByteView encryption = header.encryption;
     if (lines.size() < 7)
     {
         errorMessage = "The PPK file is truncated.";
         return PpkLoadResult::Invalid;
     }
 
-    ByteView encryption;
     ByteView comment;
     ByteView publicCountValue;
-    if (!HeaderValue(lines[1], "Encryption: ", encryption) || !HeaderValue(lines[2], "Comment: ", comment) ||
-        !HeaderValue(lines[3], "Public-Lines: ", publicCountValue))
+    if (!HeaderValue(lines[2], "Comment: ", comment) || !HeaderValue(lines[3], "Public-Lines: ", publicCountValue))
     {
         errorMessage = "The PPK headers are missing or out of order.";
         return PpkLoadResult::Invalid;
-    }
-    if (!Equals(encryption, "none"))
-    {
-        errorMessage = "Encrypted PPK v3 files are not supported yet.";
-        return PpkLoadResult::Unsupported;
     }
     size_t publicLineCount = 0;
     if (!ParseDecimal(publicCountValue, kMaximumLines, publicLineCount) || publicLineCount > lines.size() - 4)
