@@ -127,7 +127,7 @@
       <Culture>0x0807</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;Ws2_32.lib;Bcrypt.lib;Crypt32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\sftpplug.def</ModuleDefinitionFile>
@@ -168,7 +168,7 @@
       <Culture>0x0807</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmt.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmt.lib;Ws2_32.lib;Bcrypt.lib;Crypt32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\sftpplug.def</ModuleDefinitionFile>
@@ -210,7 +210,7 @@
       <Culture>0x0807</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;Ws2_32.lib;Bcrypt.lib;Crypt32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\sftpplug.def</ModuleDefinitionFile>
@@ -253,7 +253,7 @@
       <Culture>0x0807</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmtd.lib;odbc32.lib;odbccp32.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmtd.lib;odbc32.lib;odbccp32.lib;Ws2_32.lib;Bcrypt.lib;Crypt32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <ModuleDefinitionFile>.\sftpplug.def</ModuleDefinitionFile>
@@ -272,6 +272,8 @@
     <ClCompile Include="CVTUTF.C" />
     <ClCompile Include="ftpdir.cpp" />
     <ClCompile Include="multiserver.cpp" />
+    <ClCompile Include="ppk_v3_rsa.cpp" />
+    <ClCompile Include="putty_session_provider.cpp" />
     <ClCompile Include="sftpfunc.cpp" />
     <ClCompile Include="sftpplug.cpp" />
     <ClCompile Include="utils.cpp" />
@@ -288,6 +290,8 @@
     <ClInclude Include="libssh2.h" />
     <ClInclude Include="libssh2_sftp.h" />
     <ClInclude Include="multiserver.h" />
+    <ClInclude Include="ppk_v3_rsa.h" />
+    <ClInclude Include="putty_session_provider.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="sftpfunc.h" />
     <ClInclude Include="sshdynfunctions.h" />

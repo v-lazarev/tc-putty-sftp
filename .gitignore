@@ -16,6 +16,7 @@ ipch/
 *.sln.docstates
 
 # Build directories
+build/
 Debug/
 Release/
 x64/
@@ -24,6 +25,7 @@ Win32/
 ARM/
 ARM64/
 wfx/
+runtime/
 
 # Compiler and linker output
 *.obj
@@ -45,6 +47,11 @@ wfx/
 
 # Release packages
 dist/
+
+# Never commit private key material
+*.ppk
+*.pem
+*.key
 
 # Generated logs and reports
 *.log

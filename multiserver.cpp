@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "multiserver.h"
+#include "putty_session_provider.h"
 #include "utils.h"
 
 // save servers in linked list
@@ -30,6 +31,10 @@ void InitMultiServer()
 
 int LoadServersFromIni(char *inifilename, char *quickconnectname)
 {
+    // PuTTY is the source of truth. Refresh generated, read-only overlay
+    // sections before rebuilding the root listing.
+    tcputty::SyncSessionsToIni(inifilename);
+
     // Retrieve server list
     int servercount = 0;
     char serverlist[65535];

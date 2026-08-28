@@ -1,12 +1,25 @@
-New secure ftp plugin version 3.21 (32 bit+64 bit)
+TC PuTTY SFTP MVP 0.1.0 (32 bit+64 bit)
+Based on Secure FTP plugin 3.21
 Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
+
+This experimental fork adds a live, read-only view of saved PuTTY SSH
+sessions. It can use unencrypted PuTTY PPK v3 RSA keys directly from memory,
+without Pageant, puttygen, or a temporary converted private-key file.
+
+Current PPK scope: v3, ssh-rsa, Encryption: none, RSA 2048-8192 bits.
+Encrypted PPK, PPK v2, ECDSA/Ed25519 keys, and PuTTY proxy/jump settings are
+not imported in this MVP. Sessions with proxy settings are blocked.
+
+PuTTY sessions remain owned by PuTTY. Edit, rename, or delete them there and
+refresh the plugin root in Total Commander. Existing plugin INI connections
+continue to work normally.
 
 Installation instructions:
 ==========================
 
-This plugin is for Windows Vista, 7, 8, 8.1, 10, and 11. It does
-not need any additional DLLs because it uses the built-in
-Windows SSL library sChannel (Secur32.dll) instead of OpenSSL.
+This plugin is for Windows Vista, 7, 8, 8.1, 10, and 11. The package includes
+matching x86/x64 libssh2.dll files built with Windows CNG and does not require
+separate OpenSSL DLLs.
 
 If you use Windows XP or older, please get the other release
 of this plugin with libssh2.dll linked to OpenSSL.

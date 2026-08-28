@@ -18,9 +18,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $BuildScript = Join-Path $PSScriptRoot "build.ps1"
+$LibSsh2BuildScript = Join-Path $PSScriptRoot "build-libssh2.ps1"
 $PackScript  = Join-Path $PSScriptRoot "pack.ps1"
 
-foreach ($script in @($BuildScript, $PackScript)) {
+foreach ($script in @($LibSsh2BuildScript, $BuildScript, $PackScript)) {
 	if (-not (Test-Path $script)) {
 		Write-Error "Required script not found: $script"
 		exit 1
@@ -32,7 +33,15 @@ if (-not $Version) {
 	if ($LASTEXITCODE -eq 0 -and $tag) { $Version = $tag }
 }
 
-Write-Host "=== Release: Build ===" -ForegroundColor Cyan
+Write-Host "=== Release: Build libssh2 ===" -ForegroundColor Cyan
+& $LibSsh2BuildScript
+if ($LASTEXITCODE -ne 0) {
+	Write-Error "libssh2 build step failed."
+	exit 1
+}
+
+Write-Host ""
+Write-Host "=== Release: Build plugin ===" -ForegroundColor Cyan
 & $BuildScript -Configuration $Configuration
 if ($LASTEXITCODE -ne 0) {
 	Write-Error "Build step failed."

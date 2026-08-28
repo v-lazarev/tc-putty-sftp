@@ -16,22 +16,23 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Project     = Join-Path $ProjectRoot "sftpplug.vcxproj"
 
 function Find-MSBuild {
-	# 1. Already on PATH (CI/CD agents: GitHub Actions, Azure DevOps, etc.)
+	# 1. Explicit override. This must win over PATH when several Visual Studio
+	#    toolsets are installed side by side.
+	if ($env:MSBUILD_EXE -and (Test-Path $env:MSBUILD_EXE)) {
+		return $env:MSBUILD_EXE
+	}
+
+	# 2. Already on PATH (CI/CD agents: GitHub Actions, Azure DevOps, etc.)
 	$onPath = Get-Command msbuild -ErrorAction SilentlyContinue
 	if ($onPath) { return $onPath.Source }
 
-	# 2. vswhere (local Visual Studio installations)
+	# 3. vswhere (local Visual Studio installations)
 	$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 	if (Test-Path $vswhere) {
 		$found = & $vswhere -latest -requires Microsoft.Component.MSBuild `
 							-find "MSBuild\**\Bin\MSBuild.exe" 2>$null |
 				 Select-Object -First 1
 		if ($found -and (Test-Path $found)) { return $found }
-	}
-
-	# 3. MSBUILD_EXE env var (custom CI/CD override)
-	if ($env:MSBUILD_EXE -and (Test-Path $env:MSBUILD_EXE)) {
-		return $env:MSBUILD_EXE
 	}
 
 	return $null

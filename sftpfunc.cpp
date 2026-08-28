@@ -8,6 +8,8 @@
 #include "sftpfunc.h"
 #include "fsplugin.h"
 #include "multiserver.h"
+#include "ppk_v3_rsa.h"
+#include "putty_session_provider.h"
 #include "resource.h"
 #include "utils.h"
 #include "CVTUTF.H"
@@ -932,6 +934,49 @@ void libssh2_trace_handler_callback(LIBSSH2_SESSION *session, void *param, const
     LogProc(PluginNumber, MSGTYPE_DETAILS, (char *)error);
 }
 
+int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKeyFile, char *statusBuffer,
+                         int statusBufferSize, int *loop, DWORD *lasttime)
+{
+    if (!libssh2_userauth_publickey_frommemory)
+    {
+        char error[] = "The loaded libssh2.dll does not support in-memory key authentication.";
+        ShowError(error);
+        return LIBSSH2_ERROR_METHOD_NOT_SUPPORTED;
+    }
+
+    tcputty::MemoryKey memoryKey;
+    std::string error;
+    tcputty::PpkLoadResult loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, memoryKey, error);
+    if (loadResult != tcputty::PpkLoadResult::Success)
+    {
+        if (error.empty())
+            error = "The PuTTY private key could not be loaded.";
+        std::vector<char> message(error.begin(), error.end());
+        message.push_back(0);
+        ShowError(message.data());
+        return loadResult == tcputty::PpkLoadResult::Unsupported ? LIBSSH2_ERROR_METHOD_NOT_SUPPORTED
+                                                                 : LIBSSH2_ERROR_FILE;
+    }
+
+    strlcpy(statusBuffer, "Auth via PuTTY PPK v3 public key for user: ", statusBufferSize - 1);
+    strlcat(statusBuffer, ConnectSettings->user, statusBufferSize - 1);
+    ShowStatus(statusBuffer);
+    LoadStr(statusBuffer, IDS_AUTH_PUBKEY);
+
+    int auth = 0;
+    while ((auth = libssh2_userauth_publickey_frommemory(ConnectSettings->session, ConnectSettings->user,
+                                                         strlen(ConnectSettings->user), memoryKey.publicKeyFile.data(),
+                                                         memoryKey.publicKeyFile.size(),
+                                                         reinterpret_cast<const char *>(memoryKey.privateKeyPem.Data()),
+                                                         memoryKey.privateKeyPem.Size(), "")) == LIBSSH2_ERROR_EAGAIN)
+    {
+        if (ProgressLoop(statusBuffer, 60, 70, loop, lasttime))
+            break;
+        IsSocketReadable(ConnectSettings->sock);
+    }
+    return auth;
+}
+
 int SftpConnect(pConnectSettings ConnectSettings)
 {
     if (!LoadSSHLib())
@@ -1573,7 +1618,9 @@ int SftpConnect(pConnectSettings ConnectSettings)
             return -1;
         }
 
-        const char *fingerprint = libssh2_hostkey_hash(ConnectSettings->session, LIBSSH2_HOSTKEY_HASH_MD5);
+        // Modern libssh2 builds disable MD5 by default. Store a labeled SHA-256
+        // host-key fingerprint instead of aborting when the legacy hash is unavailable.
+        const char *fingerprint = libssh2_hostkey_hash(ConnectSettings->session, LIBSSH2_HOSTKEY_HASH_SHA256);
 
         if (fingerprint == NULL)
         {
@@ -1589,14 +1636,12 @@ int SftpConnect(pConnectSettings ConnectSettings)
         {
             LoadStr(buf, IDS_SERVER_FINGERPRINT);
             ShowStatus(buf);
-            buf[0] = 0;
-            for (int i = 0; i < 16; i++)
+            strlcpy(buf, "SHA256:", sizeof(buf) - 1);
+            for (int i = 0; i < 32; i++)
             {
                 char buf1[20];
                 sprintf_s(buf1, sizeof(buf1), "%02X", (unsigned char)fingerprint[i]);
                 strlcat(buf, buf1, sizeof(buf) - 1);
-                if (i < 15)
-                    strlcat(buf, " ", sizeof(buf) - 1);
             }
             ShowStatus(buf);
 
@@ -1810,6 +1855,19 @@ int SftpConnect(pConnectSettings ConnectSettings)
             ReplaceSubString(privkeyfile, "%USER%", ConnectSettings->user, sizeof(privkeyfile) - 1);
             ReplaceEnvVars(privkeyfile, sizeof(privkeyfile) - 1);
 
+            if (tcputty::HasPpkExtension(privkeyfile))
+            {
+                auth = AuthenticatePpkV3Rsa(ConnectSettings, privkeyfile, buf, sizeof(buf), &loop, &lasttime);
+                if (auth == LIBSSH2_ERROR_AUTHENTICATION_FAILED)
+                    auth_pw = 1;
+                else if (auth)
+                {
+                    SftpLogLastError("libssh2_userauth_publickey_frommemory: ", auth);
+                    ShowErrorId(IDS_ERR_AUTH_PUBKEY);
+                }
+            }
+            else
+            {
             passphrase[0] = 0;
             if (haspubkey)
             {
@@ -1959,6 +2017,7 @@ int SftpConnect(pConnectSettings ConnectSettings)
                     OverwriteWithZeroes(passphrase, sizeof(passphrase));
                 }
             }
+        }
         }
         else
             auth_pw = auth_pw & 3;
@@ -3605,6 +3664,15 @@ BOOL ShowConnectDialog(pConnectSettings ConnectSettings, char *DisplayName, char
 
 void *SftpConnectToServer(char *DisplayName, char *inifilename, pProtectedPassword overridepass)
 {
+    if (tcputty::HasUnsupportedSettings(DisplayName, inifilename))
+    {
+        MessageBoxW(
+            GetActiveWindow(),
+            L"This PuTTY session uses proxy settings which this MVP does not import. Direct connection was blocked.",
+            L"Unsupported PuTTY session", MB_OK | MB_ICONSTOP);
+        return NULL;
+    }
+
     tConnectSettings ConnectSettings;
     memset(&ConnectSettings, 0, sizeof(tConnectSettings));
     ConnectSettings.dialogforconnection = true;

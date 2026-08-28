@@ -8,6 +8,7 @@
 #include "resource.h"
 #include "sftpfunc.h"
 #include "multiserver.h"
+#include "putty_session_provider.h"
 #include "cunicode.h"
 
 HINSTANCE hinst;
@@ -499,6 +500,8 @@ BOOL __stdcall FsMkDirW(WCHAR *Path)
         walcopy(remotedir, Path + 1, sizeof(remotedir) - 1);
         if (strcmp(remotedir, s_quickconnect) != 0 && strcmp(remotedir, s_f7newconnection) != 0)
         {
+            if (tcputty::IsGeneratedSession(remotedir, inifilename))
+                return false;
             LoadServersFromIni(inifilename, s_quickconnect);
             if (SftpConfigureServer(remotedir, inifilename))
             {
@@ -591,6 +594,13 @@ int __stdcall FsExecuteFileW(HWND MainWin, WCHAR *RemoteName, WCHAR *Verb)
             walcopy(remoteserver, RemoteName + 1, sizeof(remoteserver) - 1);
             if (_stricmp(remoteserver, s_f7newconnection) != 0 && _stricmp(remoteserver, s_quickconnect) != 0)
             {
+                if (tcputty::IsGeneratedSession(remoteserver, inifilename))
+                {
+                    MessageBoxW(MainWin,
+                                L"This entry is read live from PuTTY. Edit it in PuTTY and refresh this panel.",
+                                L"PuTTY session", MB_OK | MB_ICONINFORMATION);
+                    return FS_EXEC_OK;
+                }
                 if (SftpConfigureServer(remoteserver, inifilename))
                 {
                     LoadServersFromIni(inifilename, s_quickconnect);
@@ -691,6 +701,8 @@ int __stdcall FsRenMovFileW(WCHAR *OldName, WCHAR *NewName, BOOL Move, BOOL Over
         char OldNameA[MAX_PATH], NewNameA[MAX_PATH];
         walcopy(OldNameA, OldName + 1, sizeof(OldNameA) - 1);
         walcopy(NewNameA, NewName + 1, sizeof(NewNameA) - 1);
+        if (tcputty::IsGeneratedSession(OldNameA, inifilename))
+            return FS_FILE_NOTSUPPORTED;
         switch (CopyMoveServerInIni(OldNameA, NewNameA, Move, OverWrite, inifilename))
         {
         case 0:
@@ -947,6 +959,8 @@ BOOL __stdcall FsDeleteFileW(WCHAR *RemoteName)
         walcopy(remotedir, RemoteName + 1, sizeof(remotedir) - 1);
         if (_stricmp(remotedir, s_f7newconnection) != 0 && _stricmp(remotedir, s_quickconnect) != 0)
         {
+            if (tcputty::IsGeneratedSession(remotedir, inifilename))
+                return false;
             if (DeleteServerFromIni(remotedir, inifilename))
             {
                 if (CryptProc)

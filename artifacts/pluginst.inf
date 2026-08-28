@@ -1,6 +1,6 @@
 [plugininstall]
-description=Secure FTP plugin (over SSH connection)
+description=TC PuTTY SFTP (live PuTTY sessions, in-memory PPK v3 RSA)
 type=wfx
 file=sftpplug.wfx
 defaultdir=sftpplug
-version=3.20.2
+version=0.1.0
