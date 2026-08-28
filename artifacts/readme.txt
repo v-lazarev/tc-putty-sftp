@@ -1,4 +1,4 @@
-TC PuTTY SFTP 0.2.0 (32 bit+64 bit)
+TC PuTTY SFTP 0.2.1 (32 bit+64 bit)
 Based on Secure FTP plugin 3.21
 Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
 
@@ -86,6 +86,7 @@ prefmethod7=Compression, server to client,  e.g. none
 
 Revision log:
 =============
+20260828 Fixed: Encrypted PPK passphrase dialog captions were truncated on 64-bit Total Commander
 20260821 Added: CI/CD pipeline now stamps the version in pluginst.inf from the git release tag at package time
 20260821 Added sshconfig support. 
 20260821 Changed: Upgraded project to Visual Studio 2026 (vcxproj), reformatted the entire codebase (clang-format, Microsoft/Allman style), and modernized C/C++ code (safer string handling, stronger type safety, IPv4 refactor, fixed build warnings)

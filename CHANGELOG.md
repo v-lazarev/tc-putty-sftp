@@ -8,6 +8,14 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-28
+
+### Fixed
+
+- Passphrase-dialog captions and labels are no longer truncated to six or
+  seven characters on x64. The PPK authentication helper now passes the real
+  destination-buffer size when loading localized resource strings.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
@@ -61,7 +69,8 @@ while it remains in the 0.x development series.
   proxy configurations.
 - Reproducible x86/x64 build, packaging, smoke, WFX, and integration harnesses.
 
-[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/v-lazarev/tc-putty-sftp/releases/tag/v0.1.0
