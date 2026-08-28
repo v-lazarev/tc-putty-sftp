@@ -22,18 +22,20 @@ function Find-MSBuild {
 		return $env:MSBUILD_EXE
 	}
 
-	# 2. Already on PATH (CI/CD agents: GitHub Actions, Azure DevOps, etc.)
-	$onPath = Get-Command msbuild -ErrorAction SilentlyContinue
-	if ($onPath) { return $onPath.Source }
-
-	# 3. vswhere (local Visual Studio installations)
-	$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+	# 2. Prefer the newest matching Visual Studio. PATH can point at an older
+	#    MSBuild which does not contain the project's platform toolset.
+	$programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+	$vswhere = Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
 	if (Test-Path $vswhere) {
-		$found = & $vswhere -latest -requires Microsoft.Component.MSBuild `
+		$found = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild `
 							-find "MSBuild\**\Bin\MSBuild.exe" 2>$null |
 				 Select-Object -First 1
 		if ($found -and (Test-Path $found)) { return $found }
 	}
+
+	# 3. CI agents may expose only a configured MSBuild on PATH.
+	$onPath = Get-Command msbuild -ErrorAction SilentlyContinue
+	if ($onPath) { return $onPath.Source }
 
 	return $null
 }

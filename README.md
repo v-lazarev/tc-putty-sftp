@@ -1,5 +1,9 @@
 # tc-putty-sftp
 
+[![CI](https://github.com/v-lazarev/tc-putty-sftp/actions/workflows/ci.yml/badge.svg)](https://github.com/v-lazarev/tc-putty-sftp/actions/workflows/ci.yml)
+[![Release](https://github.com/v-lazarev/tc-putty-sftp/actions/workflows/release.yml/badge.svg)](https://github.com/v-lazarev/tc-putty-sftp/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](License.txt)
+
 An experimental Total Commander WFX plugin that combines the current SFTP
 transport with a live, read-only view of saved PuTTY sessions.
 
@@ -25,6 +29,14 @@ the code baseline and the original 3.10 snapshot retained in its history. See
 
 Name collisions are deterministic: a PuTTY entry receives a `[PuTTY]` suffix
 when an INI connection already uses the same display name.
+
+## Download
+
+Use the latest package on the
+[Releases page](https://github.com/v-lazarev/tc-putty-sftp/releases).
+Versions below 1.0 are published as pre-releases while the compatibility
+surface and key-format support are still intentionally narrow. Each ZIP is
+accompanied by a SHA-256 checksum file.
 
 ## Security boundary of the MVP
 
@@ -68,7 +80,7 @@ pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.1.0
 
 `bin/build-libssh2.ps1` pins the submodule revision and builds shared x86/x64
 libssh2 with the Windows CNG backend. `bin/release.ps1` then builds both WFX
-architectures and creates the release ZIP.
+architectures, creates the release ZIP, and writes its SHA-256 checksum.
 
 ## Tests
 
@@ -83,6 +95,30 @@ isolates the transport/key path for diagnosis.
 Network test modes deliberately require an explicit flag saying the server
 host key was already validated with PuTTY. They must not be used as a general
 replacement for host-key verification.
+
+Build and run the offline test suite with:
+
+```powershell
+pwsh -NoProfile -File .\bin\build-tests.ps1
+pwsh -NoProfile -File .\bin\test.ps1
+```
+
+The test runner creates a uniquely named, non-secret PuTTY registry session
+and an isolated runtime directory, then removes both. GitHub Actions performs
+the same x86/x64 build, package, and offline checks for every pull request.
+
+## Contributing and support
+
+Bug reports and small, focused improvements are welcome. Start with
+[`CONTRIBUTING.md`](CONTRIBUTING.md), use the issue templates, and open a pull
+request against `main`. Maintainer review is best-effort; there is no support
+SLA.
+
+Do not post private keys, passwords, host-key records, private hostnames, or
+connection logs containing sensitive data. Report security issues privately
+as described in [`SECURITY.md`](SECURITY.md).
+
+User-visible changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
