@@ -3,32 +3,50 @@ name: CI
 on:
   push:
     branches: ["**"]
-    tags-ignore: ["**"]   # release workflow handles tags
+    tags-ignore: ["**"]
   pull_request:
-    branches: ["**"]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  verify:
+    name: Build and test
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build Release|Win32
-        run: msbuild sftpplug.sln /p:Configuration=Release /p:Platform=Win32 /m /nologo /v:minimal
+      - name: Build release package
+        shell: pwsh
+        run: ./bin/release.ps1 -Configuration Release -Version 0.0.0-ci
 
-      - name: Build Release|x64
-        run: msbuild sftpplug.sln /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+      - name: Build native tests
+        shell: pwsh
+        run: ./bin/build-tests.ps1
 
-      - name: Upload build artifacts
+      - name: Run offline tests
+        shell: pwsh
+        run: ./bin/test.ps1
+
+      - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: sftpplug-binaries
+          name: sftpplug-ci-${{ github.sha }}
           path: |
-            wfx/sftpplug.wfx
-            wfx/sftpplug.wfx64
+            dist/sftpplug-0.0.0-ci.zip
+            dist/sftpplug-0.0.0-ci.zip.sha256
           if-no-files-found: error
+          retention-days: 14

@@ -59,12 +59,18 @@ if ($LASTEXITCODE -ne 0) {
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ZipName     = if ($Version) { "sftpplug-$Version.zip" } else { "sftpplug.zip" }
 $FinalZip    = Join-Path $ProjectRoot "dist\$ZipName"
+$ChecksumFile = "$FinalZip.sha256"
+$Checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $FinalZip).Hash
+"$Checksum  $ZipName" | Set-Content -LiteralPath $ChecksumFile -Encoding ascii
 
 Write-Host ""
 Write-Host "=== Release complete ===" -ForegroundColor Green
 Write-Host "  $FinalZip"
+Write-Host "  $ChecksumFile"
+Write-Host "  SHA-256: $Checksum"
 
 # Emit output path for CI
 if ($env:GITHUB_OUTPUT) {
 	"RELEASE_ZIP=$FinalZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+	"RELEASE_SHA256=$Checksum" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 }

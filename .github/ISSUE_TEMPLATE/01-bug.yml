@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible plugin defect
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Never attach a real private key or an unsanitized log.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version or commit
+      placeholder: "0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: total-commander
+    attributes:
+      label: Total Commander version and architecture
+      placeholder: "11.50 x64"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection-source
+    attributes:
+      label: Connection source
+      options:
+        - PuTTY session
+        - Plugin INI connection
+        - Quick connection
+        - Not connection-related
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use synthetic names and remove hostnames, usernames, IPs, paths, and fingerprints.
+      placeholder: |
+        1. Open Network Neighborhood...
+        2. Select a synthetic test session...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized-evidence
+    attributes:
+      label: Sanitized evidence
+      description: Optional screenshots or logs with all identifying and secret data removed.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I did not include a private key, password, token, production hostname, IP, username, key path, or host fingerprint.
+          required: true
+        - label: This is not a security vulnerability. Security reports must use private vulnerability reporting.
+          required: true
