@@ -1,6 +1,7 @@
 #include <windows.h>
 
 #include "../fsplugin.h"
+#include "../resource.h"
 
 #include <algorithm>
 #include <cctype>
@@ -158,6 +159,19 @@ int wmain(int argc, wchar_t **argv)
         return 3;
     }
 
+    char ppkPassphraseTitle[256] = {};
+    char ppkPassphrasePrompt[256] = {};
+    int ppkPassphraseTitleLength =
+        LoadStringA(plugin, IDS_PASSPHRASE, ppkPassphraseTitle, static_cast<int>(sizeof(ppkPassphraseTitle)));
+    int ppkPassphrasePromptLength =
+        LoadStringA(plugin, IDS_KEYPASSPHRASE, ppkPassphrasePrompt, static_cast<int>(sizeof(ppkPassphrasePrompt)));
+    if (ppkPassphraseTitleLength <= 7 || ppkPassphrasePromptLength <= 7)
+    {
+        fprintf(stderr, "Encrypted PPK passphrase resources are missing or truncated.\n");
+        FreeLibrary(plugin);
+        return 4;
+    }
+
     using SetDefaultParams = void(__stdcall *)(FsDefaultParamStruct *);
     using Init = int(__stdcall *)(int, tProgressProc, tLogProc, tRequestProc);
     using FindFirst = HANDLE(__stdcall *)(WCHAR *, WIN32_FIND_DATAW *);
@@ -175,7 +189,7 @@ int wmain(int argc, wchar_t **argv)
     {
         fwprintf(stderr, L"Required WFX exports are missing.\n");
         FreeLibrary(plugin);
-        return 4;
+        return 5;
     }
 
     FsDefaultParamStruct defaults = {};
@@ -186,7 +200,7 @@ int wmain(int argc, wchar_t **argv)
     {
         fwprintf(stderr, L"The test INI path cannot be represented for the plugin.\n");
         FreeLibrary(plugin);
-        return 5;
+        return 6;
     }
     setDefaultParams(&defaults);
     if (init(77, ProgressCallback, LogCallback, RequestCallback) != 0)

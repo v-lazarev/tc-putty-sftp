@@ -24,7 +24,8 @@ the code baseline and the original 3.10 snapshot retained in its history. See
 - Pageant is disabled for generated PuTTY entries.
 - Unencrypted and AES-256-CBC-encrypted PuTTY PPK v3 RSA keys are
   authenticated directly from memory. Encrypted keys use the normal hidden
-  Total Commander passphrase prompt.
+  Total Commander passphrase prompt with up to three attempts. Cancelling it
+  does not fall through to an unrelated server-password prompt.
 - No converted private key or temporary PEM file is written to disk.
 - Unsupported PPK versions, encryption types, and key algorithms are identified
   before a network connection is opened, with bounded metadata-only checks.
@@ -87,7 +88,7 @@ Requirements: Windows, Visual Studio 2026 with C++, CMake, and PowerShell 7.
 ```powershell
 git clone --recurse-submodules <repository-url>
 cd tc-putty-sftp
-pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.2.1
+pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.2.2
 ```
 
 `bin/build-libssh2.ps1` pins the submodule revision and builds shared x86/x64
