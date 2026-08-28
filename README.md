@@ -119,6 +119,9 @@ connection logs containing sensitive data. Report security issues privately
 as described in [`SECURITY.md`](SECURITY.md).
 
 User-visible changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+Repository-owner routines for reviews, dependency updates, releases, security
+reports, upstream syncs, and a future GitHub Pages site are documented in
+[`MAINTAINING.md`](MAINTAINING.md).
 
 ## License
 
