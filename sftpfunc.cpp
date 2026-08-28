@@ -974,12 +974,12 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
         else
         {
             char title[250] = {};
-            LoadStr(statusBuffer, IDS_PASSPHRASE);
+            LoadString(hinst, IDS_PASSPHRASE, statusBuffer, statusBufferSize - 1);
             strlcpy(title, statusBuffer, sizeof(title) - 1);
             strlcat(title, ConnectSettings->user, sizeof(title) - 1);
             strlcat(title, "@", sizeof(title) - 1);
             strlcat(title, ConnectSettings->server, sizeof(title) - 1);
-            LoadStr(statusBuffer, IDS_KEYPASSPHRASE);
+            LoadString(hinst, IDS_KEYPASSPHRASE, statusBuffer, statusBufferSize - 1);
             if (!RequestProc(PluginNumber, RT_Password, title, statusBuffer, passphrase, sizeof(passphrase) - 1))
             {
                 OverwriteWithZeroes(passphrase, sizeof(passphrase));
