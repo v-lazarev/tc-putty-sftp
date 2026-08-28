@@ -66,6 +66,13 @@ try {
             "/Fe:build\tests\wfx-root-$suffix.exe",
             'tests\wfx_root_smoke.cpp'
         )
+        Invoke-Compiler -Architecture $architecture -Name 'ppk-diagnostics' -Arguments @(
+            "/Fe:build\tests\ppk-diagnostics-$suffix.exe",
+            'tests\ppk_diagnostics_tests.cpp',
+            'ppk_v3_rsa.cpp',
+            'bcrypt.lib',
+            'crypt32.lib'
+        )
     }
 
     Invoke-Compiler -Architecture 'amd64' -Name 'direct' -Arguments @(

@@ -8,6 +8,24 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-28
+
+### Added
+
+- Bounded, metadata-only PPK preflight before opening a network connection,
+  with specific diagnostics for legacy versions, encryption, unsupported key
+  algorithms, malformed headers, inaccessible files, and the 64 KiB limit.
+- Runtime-generated TEST-ONLY RSA PPK coverage on x86 and x64 for valid,
+  corrupted, truncated, embedded-NUL, empty, and oversized
+  inputs without committing a reusable private key.
+
+### Changed
+
+- Connection-attempt logging now records only whether key files are configured
+  instead of logging their filesystem paths.
+- Local PPK parsing errors no longer trigger a second generic authentication
+  error dialog.
+
 ## [0.1.0] - 2026-08-28
 
 ### Added
@@ -23,5 +41,6 @@ while it remains in the 0.x development series.
   proxy configurations.
 - Reproducible x86/x64 build, packaging, smoke, WFX, and integration harnesses.
 
-[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/v-lazarev/tc-putty-sftp/releases/tag/v0.1.0
