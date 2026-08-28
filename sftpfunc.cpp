@@ -34,6 +34,13 @@ extern BOOL UpdatePercentBar(void *serverid, int percent);
 extern char pluginname[];
 extern int CryptoNumber;
 
+template <size_t N> bool LoadResourceString(char (&buffer)[N], UINT resourceId)
+{
+    static_assert(N > 1, "Resource-string buffers must have room for a terminator.");
+    buffer[0] = 0;
+    return LoadStringA(hinst, resourceId, buffer, static_cast<int>(N)) > 0;
+}
+
 BOOL serverfieldchangedbyuser = false;
 char Global_TransferMode = 'I'; // I=Binary, A=Ansi, X=Auto
 WCHAR Global_TextTypes[1024];
@@ -951,11 +958,16 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
     tcputty::MemoryKey memoryKey;
     std::string error;
     tcputty::PpkLoadResult loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, memoryKey, error);
-    if (loadResult == tcputty::PpkLoadResult::PassphraseRequired)
+    bool storedPassphraseTried = false;
+    unsigned interactivePassphraseAttempts = 0;
+    const unsigned maximumInteractivePassphraseAttempts = 3;
+    while (loadResult == tcputty::PpkLoadResult::PassphraseRequired ||
+           loadResult == tcputty::PpkLoadResult::BadPassphrase)
     {
         char passphrase[MAX_PASSWORD] = {};
-        if (ConnectSettings->protectedpassword.length > 0)
+        if (!storedPassphraseTried && ConnectSettings->protectedpassword.length > 0)
         {
+            storedPassphraseTried = true;
             char protectedValue[MAX_PASSWORD] = {};
             DecodeProtectedPassword(protectedValue, &ConnectSettings->protectedpassword);
             char *separator = strstr(protectedValue, "\",\"");
@@ -973,20 +985,34 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
         }
         else
         {
+            if (interactivePassphraseAttempts >= maximumInteractivePassphraseAttempts)
+                break;
             char title[250] = {};
-            LoadString(hinst, IDS_PASSPHRASE, statusBuffer, statusBufferSize - 1);
-            strlcpy(title, statusBuffer, sizeof(title) - 1);
+            char prompt[512] = {};
+            LoadResourceString(title, IDS_PASSPHRASE);
             strlcat(title, ConnectSettings->user, sizeof(title) - 1);
             strlcat(title, "@", sizeof(title) - 1);
             strlcat(title, ConnectSettings->server, sizeof(title) - 1);
-            LoadString(hinst, IDS_KEYPASSPHRASE, statusBuffer, statusBufferSize - 1);
-            if (!RequestProc(PluginNumber, RT_Password, title, statusBuffer, passphrase, sizeof(passphrase) - 1))
+            if (loadResult == tcputty::PpkLoadResult::BadPassphrase)
+            {
+                strlcpy(prompt, error.c_str(), sizeof(prompt) - 1);
+                strlcat(prompt, "\n", sizeof(prompt) - 1);
+                char passphraseLabel[250] = {};
+                LoadResourceString(passphraseLabel, IDS_KEYPASSPHRASE);
+                strlcat(prompt, passphraseLabel, sizeof(prompt) - 1);
+            }
+            else
+            {
+                LoadResourceString(prompt, IDS_KEYPASSPHRASE);
+            }
+            if (!RequestProc(PluginNumber, RT_Password, title, prompt, passphrase, sizeof(passphrase) - 1))
             {
                 OverwriteWithZeroes(passphrase, sizeof(passphrase));
                 if (localErrorShown)
                     *localErrorShown = true;
-                return LIBSSH2_ERROR_AUTHENTICATION_FAILED;
+                return LIBSSH2_ERROR_FILE;
             }
+            ++interactivePassphraseAttempts;
         }
         loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, reinterpret_cast<const unsigned char *>(passphrase),
                                            strlen(passphrase), memoryKey, error);
@@ -1001,8 +1027,6 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
         ShowError(message.data());
         if (localErrorShown)
             *localErrorShown = true;
-        if (loadResult == tcputty::PpkLoadResult::BadPassphrase)
-            return LIBSSH2_ERROR_AUTHENTICATION_FAILED;
         return loadResult == tcputty::PpkLoadResult::Unsupported ? LIBSSH2_ERROR_METHOD_NOT_SUPPORTED
                                                                  : LIBSSH2_ERROR_FILE;
     }
@@ -1933,9 +1957,11 @@ int SftpConnect(pConnectSettings ConnectSettings)
                     auth_pw = 1;
                 else if (auth)
                 {
-                    SftpLogLastError("libssh2_userauth_publickey_frommemory: ", auth);
                     if (!localErrorShown)
+                    {
+                        SftpLogLastError("libssh2_userauth_publickey_frommemory: ", auth);
                         ShowErrorId(IDS_ERR_AUTH_PUBKEY);
+                    }
                 }
             }
             else

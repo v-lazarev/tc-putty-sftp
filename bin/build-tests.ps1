@@ -75,7 +75,8 @@ try {
         ) + $argon2Arguments)
         Invoke-Compiler -Architecture $architecture -Name 'wfx' -Arguments @(
             "/Fe:build\tests\wfx-root-$suffix.exe",
-            'tests\wfx_root_smoke.cpp'
+            'tests\wfx_root_smoke.cpp',
+            'user32.lib'
         )
         Invoke-Compiler -Architecture $architecture -Name 'ppk-diagnostics' -Arguments (@(
             "/Fe:build\tests\ppk-diagnostics-$suffix.exe",

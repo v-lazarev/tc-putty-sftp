@@ -1,4 +1,4 @@
-TC PuTTY SFTP 0.2.1 (32 bit+64 bit)
+TC PuTTY SFTP 0.2.2 (32 bit+64 bit)
 Based on Secure FTP plugin 3.21
 Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
 
@@ -86,6 +86,8 @@ prefmethod7=Compression, server to client,  e.g. none
 
 Revision log:
 =============
+20260828 Changed: Encrypted PPK authentication now allows three passphrase attempts and distinguishes key passphrases from server passwords
+20260828 Fixed: Cancelling or exhausting the encrypted PPK passphrase prompt no longer opens an unrelated server-password prompt
 20260828 Fixed: Encrypted PPK passphrase dialog captions were truncated on 64-bit Total Commander
 20260821 Added: CI/CD pipeline now stamps the version in pluginst.inf from the git release tag at package time
 20260821 Added sshconfig support. 

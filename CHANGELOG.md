@@ -8,6 +8,23 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-28
+
+### Changed
+
+- Encrypted PPK authentication now allows up to three interactive passphrase
+  attempts. A rejected stored passphrase falls back to the same bounded prompt.
+- Retry prompts identify an incorrect PPK passphrase separately from the server
+  account password.
+
+### Fixed
+
+- Cancelling or exhausting the PPK passphrase prompt no longer falls through to
+  an unrelated server-password prompt.
+- Passphrase resource loading now uses an array-only helper, so accidentally
+  passing a pointer is rejected at compile time. WFX smoke tests also verify
+  that the packaged caption and prompt resources are complete.
+
 ## [0.2.1] - 2026-08-28
 
 ### Fixed
@@ -69,7 +86,8 @@ while it remains in the 0.x development series.
   proxy configurations.
 - Reproducible x86/x64 build, packaging, smoke, WFX, and integration harnesses.
 
-[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.0...v0.1.1
