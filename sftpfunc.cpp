@@ -951,6 +951,47 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
     tcputty::MemoryKey memoryKey;
     std::string error;
     tcputty::PpkLoadResult loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, memoryKey, error);
+    if (loadResult == tcputty::PpkLoadResult::PassphraseRequired)
+    {
+        char passphrase[MAX_PASSWORD] = {};
+        if (ConnectSettings->protectedpassword.length > 0)
+        {
+            char protectedValue[MAX_PASSWORD] = {};
+            DecodeProtectedPassword(protectedValue, &ConnectSettings->protectedpassword);
+            char *separator = strstr(protectedValue, "\",\"");
+            size_t length = strlen(protectedValue);
+            if (separator && length >= 2 && protectedValue[0] == '"' && protectedValue[length - 1] == '"')
+            {
+                separator[0] = 0;
+                strlcpy(passphrase, protectedValue + 1, sizeof(passphrase) - 1);
+            }
+            else
+            {
+                strlcpy(passphrase, protectedValue, sizeof(passphrase) - 1);
+            }
+            OverwriteWithZeroes(protectedValue, sizeof(protectedValue));
+        }
+        else
+        {
+            char title[250] = {};
+            LoadStr(statusBuffer, IDS_PASSPHRASE);
+            strlcpy(title, statusBuffer, sizeof(title) - 1);
+            strlcat(title, ConnectSettings->user, sizeof(title) - 1);
+            strlcat(title, "@", sizeof(title) - 1);
+            strlcat(title, ConnectSettings->server, sizeof(title) - 1);
+            LoadStr(statusBuffer, IDS_KEYPASSPHRASE);
+            if (!RequestProc(PluginNumber, RT_Password, title, statusBuffer, passphrase, sizeof(passphrase) - 1))
+            {
+                OverwriteWithZeroes(passphrase, sizeof(passphrase));
+                if (localErrorShown)
+                    *localErrorShown = true;
+                return LIBSSH2_ERROR_AUTHENTICATION_FAILED;
+            }
+        }
+        loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, reinterpret_cast<const unsigned char *>(passphrase),
+                                           strlen(passphrase), memoryKey, error);
+        OverwriteWithZeroes(passphrase, sizeof(passphrase));
+    }
     if (loadResult != tcputty::PpkLoadResult::Success)
     {
         if (error.empty())
@@ -960,6 +1001,8 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
         ShowError(message.data());
         if (localErrorShown)
             *localErrorShown = true;
+        if (loadResult == tcputty::PpkLoadResult::BadPassphrase)
+            return LIBSSH2_ERROR_AUTHENTICATION_FAILED;
         return loadResult == tcputty::PpkLoadResult::Unsupported ? LIBSSH2_ERROR_METHOD_NOT_SUPPORTED
                                                                  : LIBSSH2_ERROR_FILE;
     }

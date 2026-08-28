@@ -8,6 +8,26 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-28
+
+### Added
+
+- In-memory decryption of `aes256-cbc` PPK v3 RSA keys using the three PuTTY
+  Argon2 flavours and the normal hidden Total Commander passphrase prompt.
+- Strict KDF, salt, ciphertext, padding, and aggregate-work bounds before
+  expensive key derivation begins.
+- Pinned official Argon2 reference implementation with complete provenance and
+  license notices.
+- Runtime-generated encrypted PPK coverage on x86 and x64, including correct,
+  wrong, absent, and empty passphrases, all three Argon2 flavours, malformed
+  KDF parameters, and official Argon2/AES reference vectors.
+
+### Security
+
+- Passphrases, Argon2 output, AES key/IV material, decrypted private blobs, and
+  in-memory PEM data are cleared after use and are never logged or written to
+  temporary files.
+
 ## [0.1.1] - 2026-08-28
 
 ### Added
@@ -41,6 +61,7 @@ while it remains in the 0.x development series.
   proxy configurations.
 - Reproducible x86/x64 build, packaging, smoke, WFX, and integration harnesses.
 
-[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/v-lazarev/tc-putty-sftp/releases/tag/v0.1.0

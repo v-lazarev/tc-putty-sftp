@@ -18,3 +18,12 @@ The PuTTY session reader and narrow PPK v3 parser in this repository are an
 independent implementation based on the public PuTTY PPK format specification.
 No PuTTY source code is included. PuTTY itself is MIT-licensed:
 https://www.chiark.greenend.org.uk/~sgtatham/putty/licence.html
+
+## Argon2 reference implementation
+
+The bounded PPK v3 key-derivation path includes selected, unmodified files from
+the official Argon2 reference implementation, pinned as documented in
+`third_party/argon2/UPSTREAM.md`. Copyright 2015 Daniel Dinu, Dmitry
+Khovratovich, Jean-Philippe Aumasson, and Samuel Neves. The code is available
+under CC0 1.0 Universal or the Apache License 2.0, at the user's option. The
+complete upstream license text is in `third_party/argon2/LICENSE`.

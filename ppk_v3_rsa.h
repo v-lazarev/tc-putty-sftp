@@ -47,6 +47,8 @@ struct PpkKeyInfo
 enum class PpkLoadResult
 {
     Success,
+    PassphraseRequired,
+    BadPassphrase,
     NotPpk,
     Unsupported,
     Invalid,
@@ -61,7 +63,15 @@ bool HasPpkExtension(const char *path);
 // private key has already passed its integrity and CNG validation.
 PpkLoadResult InspectPpkFile(const char *path, PpkKeyInfo &info, std::string &errorMessage);
 
-// Supports only the deliberately narrow MVP format:
-// PuTTY-User-Key-File-3, ssh-rsa, Encryption: none.
+// Supports PuTTY-User-Key-File-3 ssh-rsa keys using Encryption: none or
+// aes256-cbc. A null passphrase means that no passphrase was supplied; a
+// non-null pointer with length zero represents an explicitly supplied empty
+// passphrase. The caller retains ownership of the passphrase and must clear it;
+// all private working buffers owned by this loader are cleared in memory.
+PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, size_t passphraseLength, MemoryKey &key,
+                           std::string &errorMessage);
+
+// Compatibility overload for unencrypted keys. Encrypted keys return
+// PassphraseRequired.
 PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorMessage);
 } // namespace tcputty
