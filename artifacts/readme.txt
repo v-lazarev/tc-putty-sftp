@@ -1,14 +1,15 @@
-TC PuTTY SFTP MVP 0.1.0 (32 bit+64 bit)
+TC PuTTY SFTP 0.2.0 (32 bit+64 bit)
 Based on Secure FTP plugin 3.21
 Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
 
 This experimental fork adds a live, read-only view of saved PuTTY SSH
-sessions. It can use unencrypted PuTTY PPK v3 RSA keys directly from memory,
-without Pageant, puttygen, or a temporary converted private-key file.
+sessions. It can use unencrypted and AES-256-CBC-encrypted PuTTY PPK v3 RSA
+keys directly from memory, without Pageant, puttygen, or a temporary converted
+private-key file. Encrypted keys use a hidden passphrase prompt.
 
-Current PPK scope: v3, ssh-rsa, Encryption: none, RSA 2048-8192 bits.
-Encrypted PPK, PPK v2, ECDSA/Ed25519 keys, and PuTTY proxy/jump settings are
-not imported in this MVP. Sessions with proxy settings are blocked.
+Current PPK scope: v3, ssh-rsa, Encryption none/aes256-cbc, Argon2d/i/id, and
+RSA 2048-8192 bits. PPK v2, ECDSA/Ed25519 keys, and PuTTY proxy/jump settings
+are not imported. Sessions with proxy settings are blocked.
 Unsupported PPK metadata is identified before a network connection is opened.
 Key-file paths and private key material are not written to connection logs.
 

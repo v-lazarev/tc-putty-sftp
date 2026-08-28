@@ -1,4 +1,5 @@
 #include "ppk_v3_rsa.h"
+#include "third_party/argon2/include/argon2.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -17,6 +18,12 @@ namespace
 const size_t kMaximumPpkSize = 64 * 1024;
 const size_t kMaximumLines = 1024;
 const size_t kMaximumBase64Line = 4096;
+const size_t kMaximumPassphraseSize = 4096;
+const size_t kMaximumArgon2MemoryKiB = 256 * 1024;
+const size_t kMaximumArgon2Passes = 1024;
+const size_t kMaximumArgon2Parallelism = 16;
+const size_t kMaximumArgon2SaltSize = 64;
+const size_t kMaximumArgon2WorkKiB = 8 * 1024 * 1024;
 
 struct ByteView
 {
@@ -211,10 +218,10 @@ tcputty::PpkLoadResult ParsePpkHeader(const std::vector<LineView> &lines, PpkHea
         errorMessage = message;
         return tcputty::PpkLoadResult::Unsupported;
     }
-    if (info.encryption != "none")
+    if (info.encryption != "none" && info.encryption != "aes256-cbc")
     {
-        snprintf(message, sizeof(message),
-                 "This PPK is encrypted with %s; version 0.1.x currently supports only unencrypted PPK v3 RSA keys.",
+        snprintf(message, sizeof(message), "This PPK uses unsupported encryption %s; only none and aes256-cbc are "
+                                           "supported.",
                  info.encryption.c_str());
         errorMessage = message;
         return tcputty::PpkLoadResult::Unsupported;
@@ -326,23 +333,45 @@ bool DecodeBase64(const std::vector<LineView> &lines, size_t first, size_t count
     return !decoded.Empty();
 }
 
+int HexValue(unsigned char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+bool DecodeHex(const ByteView &value, size_t maximumBytes, tcputty::SecureBuffer &decoded)
+{
+    decoded.Clear();
+    if (value.size == 0 || (value.size & 1) != 0 || value.size / 2 > maximumBytes)
+        return false;
+    decoded.Resize(value.size / 2);
+    for (size_t i = 0; i < decoded.Size(); ++i)
+    {
+        int high = HexValue(value.data[i * 2]);
+        int low = HexValue(value.data[i * 2 + 1]);
+        if (high < 0 || low < 0)
+        {
+            decoded.Clear();
+            return false;
+        }
+        decoded.Data()[i] = static_cast<unsigned char>((high << 4) | low);
+    }
+    return true;
+}
+
 bool ParseHexMac(const ByteView &value, unsigned char mac[32])
 {
     if (value.size != 64)
         return false;
     for (size_t i = 0; i < 32; ++i)
     {
-        auto hex = [](unsigned char c) -> int {
-            if (c >= '0' && c <= '9')
-                return c - '0';
-            if (c >= 'a' && c <= 'f')
-                return c - 'a' + 10;
-            if (c >= 'A' && c <= 'F')
-                return c - 'A' + 10;
-            return -1;
-        };
-        int high = hex(value.data[i * 2]);
-        int low = hex(value.data[i * 2 + 1]);
+        int high = HexValue(value.data[i * 2]);
+        int low = HexValue(value.data[i * 2 + 1]);
         if (high < 0 || low < 0)
             return false;
         mac[i] = static_cast<unsigned char>((high << 4) | low);
@@ -369,7 +398,7 @@ bool HashSshString(BCRYPT_HASH_HANDLE hash, const ByteView &value)
 
 bool VerifyMac(const ByteView &algorithm, const ByteView &encryption, const ByteView &comment,
                const tcputty::SecureBuffer &publicBlob, const tcputty::SecureBuffer &privateBlob,
-               const unsigned char expected[32])
+               const unsigned char expected[32], const unsigned char *macKey, size_t macKeyLength)
 {
     AlgorithmHandle algorithmHandle;
     if (!NtOk(BCryptOpenAlgorithmProvider(&algorithmHandle.handle, BCRYPT_SHA256_ALGORITHM, nullptr,
@@ -383,7 +412,9 @@ bool VerifyMac(const ByteView &algorithm, const ByteView &encryption, const Byte
         return false;
     tcputty::SecureBuffer hashObject(objectLength);
     HashHandle hash;
-    if (!NtOk(BCryptCreateHash(algorithmHandle.handle, &hash.handle, hashObject.Data(), objectLength, nullptr, 0, 0)))
+    if (macKeyLength > (std::numeric_limits<ULONG>::max)() ||
+        !NtOk(BCryptCreateHash(algorithmHandle.handle, &hash.handle, hashObject.Data(), objectLength,
+                               const_cast<PUCHAR>(macKey), static_cast<ULONG>(macKeyLength), 0)))
         return false;
     ByteView publicView = {publicBlob.Data(), publicBlob.Size()};
     ByteView privateView = {privateBlob.Data(), privateBlob.Size()};
@@ -399,6 +430,67 @@ bool VerifyMac(const ByteView &algorithm, const ByteView &encryption, const Byte
         difference |= computed[i] ^ expected[i];
     SecureZeroMemory(computed, sizeof(computed));
     return difference == 0;
+}
+
+bool DerivePpkKeys(argon2_type type, uint32_t memoryKiB, uint32_t passes, uint32_t parallelism,
+                   const tcputty::SecureBuffer &salt, const unsigned char *passphrase, size_t passphraseLength,
+                   tcputty::SecureBuffer &derived)
+{
+    derived.Clear();
+    if (!passphrase || passphraseLength > kMaximumPassphraseSize || salt.Empty() || salt.Size() > UINT32_MAX)
+        return false;
+    derived.Resize(80);
+    int result = argon2_hash(passes, memoryKiB, parallelism, passphrase, passphraseLength, salt.Data(), salt.Size(),
+                             derived.Data(), derived.Size(), nullptr, 0, type, ARGON2_VERSION_13);
+    if (result != ARGON2_OK)
+    {
+        derived.Clear();
+        return false;
+    }
+    return true;
+}
+
+bool DecryptAes256Cbc(const tcputty::SecureBuffer &ciphertext, const unsigned char key[32],
+                      const unsigned char initialVector[16], tcputty::SecureBuffer &plaintext)
+{
+    plaintext.Clear();
+    if (ciphertext.Empty() || (ciphertext.Size() & 15) != 0 || ciphertext.Size() > ULONG_MAX)
+        return false;
+
+    AlgorithmHandle algorithm;
+    if (!NtOk(BCryptOpenAlgorithmProvider(&algorithm.handle, BCRYPT_AES_ALGORITHM, nullptr, 0)))
+        return false;
+    const wchar_t chainingMode[] = BCRYPT_CHAIN_MODE_CBC;
+    if (!NtOk(BCryptSetProperty(algorithm.handle, BCRYPT_CHAINING_MODE,
+                                reinterpret_cast<PUCHAR>(const_cast<wchar_t *>(chainingMode)),
+                                static_cast<ULONG>(sizeof(chainingMode)), 0)))
+        return false;
+
+    DWORD objectLength = 0;
+    DWORD returned = 0;
+    if (!NtOk(BCryptGetProperty(algorithm.handle, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectLength),
+                                sizeof(objectLength), &returned, 0)) ||
+        returned != sizeof(objectLength) || objectLength == 0 || objectLength > 64 * 1024)
+        return false;
+    tcputty::SecureBuffer keyObject(objectLength);
+    KeyHandle keyHandle;
+    if (!NtOk(BCryptGenerateSymmetricKey(algorithm.handle, &keyHandle.handle, keyObject.Data(), objectLength,
+                                         const_cast<PUCHAR>(key), 32, 0)))
+        return false;
+
+    tcputty::SecureBuffer iv(16);
+    memcpy(iv.Data(), initialVector, iv.Size());
+    plaintext.Resize(ciphertext.Size());
+    ULONG plaintextLength = 0;
+    if (!NtOk(BCryptDecrypt(keyHandle.handle, const_cast<PUCHAR>(ciphertext.Data()),
+                            static_cast<ULONG>(ciphertext.Size()), nullptr, iv.Data(), static_cast<ULONG>(iv.Size()),
+                            plaintext.Data(), static_cast<ULONG>(plaintext.Size()), &plaintextLength, 0)) ||
+        plaintextLength != plaintext.Size())
+    {
+        plaintext.Clear();
+        return false;
+    }
+    return true;
 }
 
 uint32_t ReadUint32(const unsigned char *data)
@@ -449,6 +541,11 @@ class SshReader
     bool AtEnd() const
     {
         return position_ == size_;
+    }
+
+    size_t Remaining() const
+    {
+        return position_ <= size_ ? size_ - position_ : 0;
     }
 
   private:
@@ -712,6 +809,155 @@ bool ReadFileSecure(const char *path, tcputty::SecureBuffer &file, std::string &
         file.Clear();
     return ok;
 }
+
+struct ParsedPpk
+{
+    ByteView algorithm;
+    ByteView encryption;
+    ByteView comment;
+    ByteView macValue;
+    ByteView saltHex;
+    size_t publicFirst = 0;
+    size_t publicCount = 0;
+    size_t privateFirst = 0;
+    size_t privateCount = 0;
+    bool encrypted = false;
+    argon2_type argonType = Argon2_id;
+    uint32_t argonMemoryKiB = 0;
+    uint32_t argonPasses = 0;
+    uint32_t argonParallelism = 0;
+};
+
+tcputty::PpkLoadResult ParseOuterPpk(const std::vector<LineView> &lines, ParsedPpk &parsed,
+                                     tcputty::PpkKeyInfo &info, std::string &errorMessage)
+{
+    parsed = {};
+    PpkHeader header;
+    tcputty::PpkLoadResult headerResult = ParsePpkHeader(lines, header, info, errorMessage);
+    if (headerResult != tcputty::PpkLoadResult::Success)
+        return headerResult;
+    parsed.algorithm = header.algorithm;
+    parsed.encryption = header.encryption;
+    parsed.encrypted = info.encryption == "aes256-cbc";
+
+    if (lines.size() < 7)
+    {
+        errorMessage = "The PPK file is truncated.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+
+    ByteView publicCountValue;
+    if (!HeaderValue(lines[2], "Comment: ", parsed.comment) ||
+        !HeaderValue(lines[3], "Public-Lines: ", publicCountValue))
+    {
+        errorMessage = "The PPK headers are missing or out of order.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    if (!ParseDecimal(publicCountValue, kMaximumLines, parsed.publicCount) ||
+        parsed.publicCount > lines.size() - 4)
+    {
+        errorMessage = "Public-Lines is invalid.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    parsed.publicFirst = 4;
+    size_t cursor = parsed.publicFirst + parsed.publicCount;
+
+    if (parsed.encrypted)
+    {
+        if (cursor > lines.size() || lines.size() - cursor < 6)
+        {
+            errorMessage = "The encrypted PPK key-derivation headers are truncated.";
+            return tcputty::PpkLoadResult::Invalid;
+        }
+        ByteView derivation;
+        ByteView memoryValue;
+        ByteView passesValue;
+        ByteView parallelismValue;
+        if (!HeaderValue(lines[cursor], "Key-Derivation: ", derivation) ||
+            !HeaderValue(lines[cursor + 1], "Argon2-Memory: ", memoryValue) ||
+            !HeaderValue(lines[cursor + 2], "Argon2-Passes: ", passesValue) ||
+            !HeaderValue(lines[cursor + 3], "Argon2-Parallelism: ", parallelismValue) ||
+            !HeaderValue(lines[cursor + 4], "Argon2-Salt: ", parsed.saltHex))
+        {
+            errorMessage = "The encrypted PPK key-derivation headers are missing or out of order.";
+            return tcputty::PpkLoadResult::Invalid;
+        }
+        std::string derivationName;
+        if (!CopySafeToken(derivation, 32, derivationName))
+        {
+            errorMessage = "The PPK key-derivation algorithm name is invalid.";
+            return tcputty::PpkLoadResult::Invalid;
+        }
+        if (derivationName == "Argon2d")
+            parsed.argonType = Argon2_d;
+        else if (derivationName == "Argon2i")
+            parsed.argonType = Argon2_i;
+        else if (derivationName == "Argon2id")
+            parsed.argonType = Argon2_id;
+        else
+        {
+            errorMessage = "The encrypted PPK uses an unsupported key-derivation algorithm.";
+            return tcputty::PpkLoadResult::Unsupported;
+        }
+
+        size_t memoryKiB = 0;
+        size_t passes = 0;
+        size_t parallelism = 0;
+        if (!ParseDecimal(memoryValue, kMaximumArgon2MemoryKiB, memoryKiB) ||
+            !ParseDecimal(passesValue, kMaximumArgon2Passes, passes) ||
+            !ParseDecimal(parallelismValue, kMaximumArgon2Parallelism, parallelism) ||
+            memoryKiB < 8 * parallelism || memoryKiB > kMaximumArgon2WorkKiB / passes)
+        {
+            errorMessage = "The PPK Argon2 parameters are invalid or exceed the safety limits (256 MiB, 1024 passes, "
+                           "16 lanes, and 8 GiB of aggregate memory work).";
+            return tcputty::PpkLoadResult::Invalid;
+        }
+        tcputty::SecureBuffer salt;
+        if (!DecodeHex(parsed.saltHex, kMaximumArgon2SaltSize, salt) || salt.Size() < 8)
+        {
+            errorMessage = "The PPK Argon2 salt must contain 8 to 64 bytes of hexadecimal data.";
+            return tcputty::PpkLoadResult::Invalid;
+        }
+        parsed.argonMemoryKiB = static_cast<uint32_t>(memoryKiB);
+        parsed.argonPasses = static_cast<uint32_t>(passes);
+        parsed.argonParallelism = static_cast<uint32_t>(parallelism);
+        cursor += 5;
+    }
+
+    ByteView privateCountValue;
+    if (cursor >= lines.size() || !HeaderValue(lines[cursor], "Private-Lines: ", privateCountValue))
+    {
+        errorMessage = "Private-Lines is missing or out of order.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    if (!ParseDecimal(privateCountValue, kMaximumLines, parsed.privateCount) ||
+        parsed.privateCount > lines.size() - cursor - 1)
+    {
+        errorMessage = "Private-Lines is invalid.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    parsed.privateFirst = cursor + 1;
+    size_t macIndex = parsed.privateFirst + parsed.privateCount;
+    if (macIndex >= lines.size() || macIndex + 1 != lines.size())
+    {
+        errorMessage = "The PPK private data is truncated or has trailing fields.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    if (!HeaderValue(lines[macIndex], "Private-MAC: ", parsed.macValue))
+    {
+        errorMessage = "Private-MAC is missing.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    unsigned char expectedMac[32] = {};
+    bool validMac = ParseHexMac(parsed.macValue, expectedMac);
+    SecureZeroMemory(expectedMac, sizeof(expectedMac));
+    if (!validMac)
+    {
+        errorMessage = "Private-MAC must contain exactly 32 bytes of hexadecimal data.";
+        return tcputty::PpkLoadResult::Invalid;
+    }
+    return tcputty::PpkLoadResult::Success;
+}
 } // namespace
 
 namespace tcputty
@@ -816,11 +1062,12 @@ PpkLoadResult InspectPpkFile(const char *path, PpkKeyInfo &info, std::string &er
         errorMessage = "The PPK text structure is invalid.";
         return PpkLoadResult::Invalid;
     }
-    PpkHeader header;
-    return ParsePpkHeader(lines, header, info, errorMessage);
+    ParsedPpk parsed;
+    return ParseOuterPpk(lines, parsed, info, errorMessage);
 }
 
-PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorMessage)
+PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, size_t passphraseLength, MemoryKey &key,
+                           std::string &errorMessage)
 {
     key.publicKeyFile.clear();
     key.privateKeyPem.Clear();
@@ -840,77 +1087,72 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorM
         return PpkLoadResult::Invalid;
     }
 
-    PpkHeader header;
+    ParsedPpk parsed;
     PpkKeyInfo info;
-    PpkLoadResult headerResult = ParsePpkHeader(lines, header, info, errorMessage);
-    if (headerResult != PpkLoadResult::Success)
-        return headerResult;
-    ByteView algorithm = header.algorithm;
-    ByteView encryption = header.encryption;
-    if (lines.size() < 7)
-    {
-        errorMessage = "The PPK file is truncated.";
-        return PpkLoadResult::Invalid;
-    }
-
-    ByteView comment;
-    ByteView publicCountValue;
-    if (!HeaderValue(lines[2], "Comment: ", comment) || !HeaderValue(lines[3], "Public-Lines: ", publicCountValue))
-    {
-        errorMessage = "The PPK headers are missing or out of order.";
-        return PpkLoadResult::Invalid;
-    }
-    size_t publicLineCount = 0;
-    if (!ParseDecimal(publicCountValue, kMaximumLines, publicLineCount) || publicLineCount > lines.size() - 4)
-    {
-        errorMessage = "Public-Lines is invalid.";
-        return PpkLoadResult::Invalid;
-    }
-    size_t privateHeaderIndex = 4 + publicLineCount;
-    if (privateHeaderIndex >= lines.size())
-    {
-        errorMessage = "The public key data is truncated.";
-        return PpkLoadResult::Invalid;
-    }
-    ByteView privateCountValue;
-    if (!HeaderValue(lines[privateHeaderIndex], "Private-Lines: ", privateCountValue))
-    {
-        errorMessage = "Private-Lines is missing or out of order.";
-        return PpkLoadResult::Invalid;
-    }
-    size_t privateLineCount = 0;
-    if (!ParseDecimal(privateCountValue, kMaximumLines, privateLineCount) ||
-        privateLineCount > lines.size() - privateHeaderIndex - 1)
-    {
-        errorMessage = "Private-Lines is invalid.";
-        return PpkLoadResult::Invalid;
-    }
-    size_t macIndex = privateHeaderIndex + 1 + privateLineCount;
-    if (macIndex >= lines.size() || macIndex + 1 != lines.size())
-    {
-        errorMessage = "The PPK private data is truncated or has trailing fields.";
-        return PpkLoadResult::Invalid;
-    }
-    ByteView macValue;
-    if (!HeaderValue(lines[macIndex], "Private-MAC: ", macValue))
-    {
-        errorMessage = "Private-MAC is missing.";
-        return PpkLoadResult::Invalid;
-    }
+    PpkLoadResult parseResult = ParseOuterPpk(lines, parsed, info, errorMessage);
+    if (parseResult != PpkLoadResult::Success)
+        return parseResult;
 
     SecureBuffer publicBlob;
-    SecureBuffer privateBlob;
-    if (!DecodeBase64(lines, 4, publicLineCount, publicBlob) ||
-        !DecodeBase64(lines, privateHeaderIndex + 1, privateLineCount, privateBlob))
+    SecureBuffer storedPrivateBlob;
+    if (!DecodeBase64(lines, parsed.publicFirst, parsed.publicCount, publicBlob) ||
+        !DecodeBase64(lines, parsed.privateFirst, parsed.privateCount, storedPrivateBlob))
     {
         errorMessage = "The PPK contains invalid or non-canonical base64 data.";
         return PpkLoadResult::Invalid;
     }
+
+    SecureBuffer privateBlob;
+    SecureBuffer derived;
+    if (parsed.encrypted)
+    {
+        if (!passphrase)
+        {
+            errorMessage = "This PPK is encrypted and requires its key passphrase.";
+            return PpkLoadResult::PassphraseRequired;
+        }
+        if (passphraseLength > kMaximumPassphraseSize)
+        {
+            errorMessage = "The PPK passphrase exceeds the 4096-byte safety limit.";
+            return PpkLoadResult::Invalid;
+        }
+        if ((storedPrivateBlob.Size() & 15) != 0)
+        {
+            errorMessage = "The encrypted PPK private data is not a whole number of AES blocks.";
+            return PpkLoadResult::Invalid;
+        }
+        SecureBuffer salt;
+        if (!DecodeHex(parsed.saltHex, kMaximumArgon2SaltSize, salt) ||
+            !DerivePpkKeys(parsed.argonType, parsed.argonMemoryKiB, parsed.argonPasses, parsed.argonParallelism, salt,
+                           passphrase, passphraseLength, derived))
+        {
+            errorMessage = "The encrypted PPK key derivation failed within the configured safety limits.";
+            return PpkLoadResult::Invalid;
+        }
+        if (!DecryptAes256Cbc(storedPrivateBlob, derived.Data(), derived.Data() + 32, privateBlob))
+        {
+            errorMessage = "Windows could not decrypt the PPK private data safely in memory.";
+            return PpkLoadResult::Invalid;
+        }
+    }
+    else
+    {
+        privateBlob = std::move(storedPrivateBlob);
+    }
+
     unsigned char expectedMac[32] = {};
-    if (!ParseHexMac(macValue, expectedMac) ||
-        !VerifyMac(algorithm, encryption, comment, publicBlob, privateBlob, expectedMac))
+    const unsigned char *macKey = parsed.encrypted ? derived.Data() + 48 : nullptr;
+    size_t macKeyLength = parsed.encrypted ? 32 : 0;
+    if (!ParseHexMac(parsed.macValue, expectedMac) ||
+        !VerifyMac(parsed.algorithm, parsed.encryption, parsed.comment, publicBlob, privateBlob, expectedMac, macKey,
+                   macKeyLength))
     {
         SecureZeroMemory(expectedMac, sizeof(expectedMac));
+        if (parsed.encrypted)
+        {
+            errorMessage = "The PPK passphrase is incorrect or the encrypted key file is damaged.";
+            return PpkLoadResult::BadPassphrase;
+        }
         errorMessage = "The PPK integrity check failed.";
         return PpkLoadResult::Invalid;
     }
@@ -933,7 +1175,7 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorM
     ByteView coefficient;
     if (!privateReader.ReadPositiveMpint(privateExponent) || !privateReader.ReadPositiveMpint(prime1) ||
         !privateReader.ReadPositiveMpint(prime2) || !privateReader.ReadPositiveMpint(coefficient) ||
-        !privateReader.AtEnd())
+        (parsed.encrypted ? privateReader.Remaining() > 15 : !privateReader.AtEnd()))
     {
         errorMessage = "The PPK private RSA blob is invalid.";
         return PpkLoadResult::Invalid;
@@ -947,5 +1189,10 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorM
     }
     key.publicKeyFile = "ssh-rsa " + Base64Public(publicBlob) + "\n";
     return PpkLoadResult::Success;
+}
+
+PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorMessage)
+{
+    return LoadPpkV3Rsa(path, nullptr, 0, key, errorMessage);
 }
 } // namespace tcputty

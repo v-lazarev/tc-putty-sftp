@@ -51,9 +51,20 @@ function Invoke-Compiler {
 
 Push-Location $ProjectRoot
 try {
+    $argon2Arguments = @(
+        '/Ithird_party\argon2\include',
+        '/Ithird_party\argon2\src',
+        '/DARGON2_NO_THREADS',
+        '/D_CRT_SECURE_NO_WARNINGS',
+        'third_party\argon2\src\argon2.c',
+        'third_party\argon2\src\blake2\blake2b.c',
+        'third_party\argon2\src\core.c',
+        'third_party\argon2\src\encoding.c',
+        'third_party\argon2\src\ref.c'
+    )
     foreach ($architecture in @('x86', 'amd64')) {
         $suffix = if ($architecture -eq 'x86') { 'x86' } else { 'x64' }
-        Invoke-Compiler -Architecture $architecture -Name 'smoke' -Arguments @(
+        Invoke-Compiler -Architecture $architecture -Name 'smoke' -Arguments (@(
             "/Fe:build\tests\smoke-$suffix.exe",
             'tests\smoke_tests.cpp',
             'ppk_v3_rsa.cpp',
@@ -61,21 +72,21 @@ try {
             'advapi32.lib',
             'bcrypt.lib',
             'crypt32.lib'
-        )
+        ) + $argon2Arguments)
         Invoke-Compiler -Architecture $architecture -Name 'wfx' -Arguments @(
             "/Fe:build\tests\wfx-root-$suffix.exe",
             'tests\wfx_root_smoke.cpp'
         )
-        Invoke-Compiler -Architecture $architecture -Name 'ppk-diagnostics' -Arguments @(
+        Invoke-Compiler -Architecture $architecture -Name 'ppk-diagnostics' -Arguments (@(
             "/Fe:build\tests\ppk-diagnostics-$suffix.exe",
             'tests\ppk_diagnostics_tests.cpp',
             'ppk_v3_rsa.cpp',
             'bcrypt.lib',
             'crypt32.lib'
-        )
+        ) + $argon2Arguments)
     }
 
-    Invoke-Compiler -Architecture 'amd64' -Name 'direct' -Arguments @(
+    Invoke-Compiler -Architecture 'amd64' -Name 'direct' -Arguments (@(
         '/Ithird_party\libssh2\include',
         '/Fe:build\tests\libssh2-ppk-integration-x64.exe',
         'tests\libssh2_ppk_integration.cpp',
@@ -85,7 +96,7 @@ try {
         'bcrypt.lib',
         'crypt32.lib',
         'ws2_32.lib'
-    )
+    ) + $argon2Arguments)
 }
 finally {
     Pop-Location

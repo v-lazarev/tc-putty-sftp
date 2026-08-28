@@ -13,6 +13,12 @@
       <UniqueIdentifier>{9838fb7a-5335-46b0-8254-eb084ec32f18}</UniqueIdentifier>
       <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
     </Filter>
+    <Filter Include="Third-Party Source">
+      <UniqueIdentifier>{f172b3d2-b894-45dd-8328-e76f5f2e723b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Third-Party Headers">
+      <UniqueIdentifier>{4f9ccad6-cc18-46e9-9a22-7edaf17cb39f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cunicode.cpp">
@@ -41,6 +47,21 @@
     </ClCompile>
     <ClCompile Include="utils.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\argon2\src\argon2.c">
+      <Filter>Third-Party Source</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\argon2\src\blake2\blake2b.c">
+      <Filter>Third-Party Source</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\argon2\src\core.c">
+      <Filter>Third-Party Source</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\argon2\src\encoding.c">
+      <Filter>Third-Party Source</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\argon2\src\ref.c">
+      <Filter>Third-Party Source</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -90,6 +111,30 @@
     </ClInclude>
     <ClInclude Include="utils.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\include\argon2.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\blake2\blake2-impl.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\blake2\blake2.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\blake2\blamka-round-ref.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\core.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\encoding.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\genkat.h">
+      <Filter>Third-Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\argon2\src\thread.h">
+      <Filter>Third-Party Headers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
