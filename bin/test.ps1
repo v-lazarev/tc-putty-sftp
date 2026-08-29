@@ -3,7 +3,7 @@
 .SYNOPSIS
     Runs the offline native test suite and optional prevalidated network checks.
 .PARAMETER PpkPath
-    Optional unencrypted PPK v3 RSA key used only by local parser tests.
+    Optional unencrypted PPK v3 RSA or Ed25519 key used by local parser and network tests.
 .PARAMETER Session
     Optional PuTTY display name for a local network integration test.
 .PARAMETER User

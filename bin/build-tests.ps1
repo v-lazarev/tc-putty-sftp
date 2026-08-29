@@ -62,6 +62,12 @@ try {
         'third_party\argon2\src\encoding.c',
         'third_party\argon2\src\ref.c'
     )
+    $ed25519Arguments = @(
+        '/Ithird_party\monocypher',
+        'third_party\monocypher\monocypher.c',
+        'third_party\monocypher\monocypher-ed25519.c',
+        'ed25519_crypto.cpp'
+    )
     foreach ($architecture in @('x86', 'amd64')) {
         $suffix = if ($architecture -eq 'x86') { 'x86' } else { 'x64' }
         Invoke-Compiler -Architecture $architecture -Name 'smoke' -Arguments (@(
@@ -72,7 +78,7 @@ try {
             'advapi32.lib',
             'bcrypt.lib',
             'crypt32.lib'
-        ) + $argon2Arguments)
+        ) + $argon2Arguments + $ed25519Arguments)
         Invoke-Compiler -Architecture $architecture -Name 'wfx' -Arguments @(
             "/Fe:build\tests\wfx-root-$suffix.exe",
             'tests\wfx_root_smoke.cpp',
@@ -84,7 +90,7 @@ try {
             'ppk_v3_rsa.cpp',
             'bcrypt.lib',
             'crypt32.lib'
-        ) + $argon2Arguments)
+        ) + $argon2Arguments + $ed25519Arguments)
     }
 
     Invoke-Compiler -Architecture 'amd64' -Name 'direct' -Arguments (@(
@@ -97,7 +103,7 @@ try {
         'bcrypt.lib',
         'crypt32.lib',
         'ws2_32.lib'
-    ) + $argon2Arguments)
+    ) + $argon2Arguments + $ed25519Arguments)
 }
 finally {
     Pop-Location

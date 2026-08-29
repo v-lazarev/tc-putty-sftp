@@ -1,4 +1,5 @@
 #include "../ppk_v3_rsa.h"
+#include "../ed25519_crypto.h"
 #include "../third_party/argon2/include/argon2.h"
 
 #include <windows.h>
@@ -325,6 +326,108 @@ bool GenerateTestPpk(std::string &text, const char *passphrase = nullptr, argon2
     return true;
 }
 
+bool GenerateTestEd25519Ppk(std::string &text, const char *passphrase = nullptr,
+                            argon2_type type = Argon2_id, bool mismatchedPublicKey = false)
+{
+    const unsigned char seed[32] = {0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a,
+                                    0xf4, 0x92, 0xec, 0x2c, 0xc4, 0x44, 0x49, 0xc5, 0x69, 0x7b, 0x32,
+                                    0x69, 0x19, 0x70, 0x3b, 0xac, 0x03, 0x1c, 0xae, 0x7f, 0x60};
+    const unsigned char expectedPublic[32] = {
+        0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
+        0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a};
+    unsigned char publicKey[32] = {};
+    if (!tcputty::Ed25519DerivePublic(seed, publicKey) || memcmp(publicKey, expectedPublic, sizeof(publicKey)) != 0)
+        return false;
+    if (mismatchedPublicKey)
+        publicKey[0] ^= 1;
+
+    const std::string algorithmName = "ssh-ed25519";
+    const bool encrypted = passphrase != nullptr;
+    const std::string encryption = encrypted ? "aes256-cbc" : "none";
+    const std::string comment = "TEST-ONLY RFC 8032 Ed25519 key";
+    std::vector<unsigned char> publicBlob;
+    AppendString(publicBlob, algorithmName);
+    AppendString(publicBlob, publicKey, sizeof(publicKey));
+    std::vector<unsigned char> privateBlob;
+    AppendString(privateBlob, seed, sizeof(seed));
+
+    const uint32_t memoryKiB = 32;
+    const uint32_t passes = 2;
+    const uint32_t parallelism = 2;
+    const unsigned char salt[] = {0x20, 0x31, 0x42, 0x53, 0x64, 0x75, 0x86, 0x97,
+                                  0xa8, 0xb9, 0xca, 0xdb, 0xec, 0xfd, 0x0e, 0x1f};
+    std::vector<unsigned char> derived;
+    std::vector<unsigned char> storedPrivate;
+    const unsigned char *macKey = nullptr;
+    size_t macKeyLength = 0;
+    if (encrypted)
+    {
+        while ((privateBlob.size() & 15) != 0)
+            privateBlob.push_back(static_cast<unsigned char>(0x50 + (privateBlob.size() & 15)));
+        derived.resize(80);
+        if (argon2_hash(passes, memoryKiB, parallelism, passphrase, strlen(passphrase), salt, sizeof(salt),
+                        derived.data(), derived.size(), nullptr, 0, type, ARGON2_VERSION_13) != ARGON2_OK ||
+            !EncryptAes256Cbc(privateBlob, derived.data(), derived.data() + 32, storedPrivate))
+            return false;
+        macKey = derived.data() + 48;
+        macKeyLength = 32;
+    }
+    else
+    {
+        storedPrivate = privateBlob;
+    }
+
+    std::vector<unsigned char> macInput;
+    AppendString(macInput, algorithmName);
+    AppendString(macInput, encryption);
+    AppendString(macInput, comment);
+    AppendString(macInput, publicBlob.data(), publicBlob.size());
+    AppendString(macInput, privateBlob.data(), privateBlob.size());
+    unsigned char mac[32] = {};
+    if (!HmacSha256(macInput, macKey, macKeyLength, mac))
+        return false;
+
+    std::vector<std::string> publicLines = WrapBase64(publicBlob);
+    std::vector<std::string> privateLines = WrapBase64(storedPrivate);
+    text = "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: " + encryption + "\nComment: " + comment +
+           "\nPublic-Lines: " + std::to_string(publicLines.size()) + "\n";
+    for (const std::string &line : publicLines)
+        text += line + "\n";
+    if (encrypted)
+    {
+        const char *derivationName = type == Argon2_d ? "Argon2d" : (type == Argon2_i ? "Argon2i" : "Argon2id");
+        text += "Key-Derivation: " + std::string(derivationName) + "\nArgon2-Memory: " +
+                std::to_string(memoryKiB) + "\nArgon2-Passes: " + std::to_string(passes) +
+                "\nArgon2-Parallelism: " + std::to_string(parallelism) + "\nArgon2-Salt: ";
+        static const char saltHex[] = "0123456789abcdef";
+        for (unsigned char value : salt)
+        {
+            text.push_back(saltHex[value >> 4]);
+            text.push_back(saltHex[value & 15]);
+        }
+        text.push_back('\n');
+    }
+    text += "Private-Lines: " + std::to_string(privateLines.size()) + "\n";
+    for (const std::string &line : privateLines)
+        text += line + "\n";
+    static const char hex[] = "0123456789abcdef";
+    text += "Private-MAC: ";
+    for (unsigned char value : mac)
+    {
+        text.push_back(hex[value >> 4]);
+        text.push_back(hex[value & 15]);
+    }
+    text.push_back('\n');
+
+    SecureZeroMemory(publicKey, sizeof(publicKey));
+    SecureZeroMemory(mac, sizeof(mac));
+    SecureZeroMemory(privateBlob.data(), privateBlob.size());
+    SecureZeroMemory(storedPrivate.data(), storedPrivate.size());
+    SecureZeroMemory(derived.data(), derived.size());
+    SecureZeroMemory(macInput.data(), macInput.size());
+    return true;
+}
+
 bool WriteText(const std::string &path, const std::string &text)
 {
     HANDLE file = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
@@ -416,8 +519,40 @@ int main(int argc, char **argv)
         fprintf(stderr, "Unable to generate encrypted TEST-ONLY RSA PPK variants.\n");
         return 2;
     }
+    std::string validEd25519;
+    std::string encryptedEd25519;
+    std::string mismatchedEd25519;
+    if (!GenerateTestEd25519Ppk(validEd25519) ||
+        !GenerateTestEd25519Ppk(encryptedEd25519, kEncryptedTestPassphrase, Argon2_id) ||
+        !GenerateTestEd25519Ppk(mismatchedEd25519, nullptr, Argon2_id, true))
+    {
+        fprintf(stderr, "Unable to generate TEST-ONLY Ed25519 PPK variants.\n");
+        return 2;
+    }
 
     int failures = 0;
+    {
+        const unsigned char seed[32] = {
+            0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a, 0xf4, 0x92, 0xec, 0x2c, 0xc4,
+            0x44, 0x49, 0xc5, 0x69, 0x7b, 0x32, 0x69, 0x19, 0x70, 0x3b, 0xac, 0x03, 0x1c, 0xae, 0x7f, 0x60};
+        const unsigned char publicKey[32] = {
+            0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
+            0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a};
+        const unsigned char expectedSignature[64] = {
+            0xe5, 0x56, 0x43, 0x00, 0xc3, 0x60, 0xac, 0x72, 0x90, 0x86, 0xe2, 0xcc, 0x80, 0x6e, 0x82, 0x8a,
+            0x84, 0x87, 0x7f, 0x1e, 0xb8, 0xe5, 0xd9, 0x74, 0xd8, 0x73, 0xe0, 0x65, 0x22, 0x49, 0x01, 0x55,
+            0x5f, 0xb8, 0x82, 0x15, 0x90, 0xa3, 0x3b, 0xac, 0xc6, 0x1e, 0x39, 0x70, 0x1c, 0xf9, 0xb4, 0x6b,
+            0xd2, 0x5b, 0xf5, 0xf0, 0x59, 0x5b, 0xbe, 0x24, 0x65, 0x51, 0x41, 0x43, 0x8e, 0x7a, 0x10, 0x0b};
+        unsigned char signature[64] = {};
+        if (!tcputty::Ed25519Sign(seed, publicKey, nullptr, 0, signature) ||
+            memcmp(signature, expectedSignature, sizeof(signature)) != 0 ||
+            !tcputty::Ed25519Verify(publicKey, nullptr, 0, signature))
+        {
+            fprintf(stderr, "RFC 8032 Ed25519 signing vector failed.\n");
+            ++failures;
+        }
+        SecureZeroMemory(signature, sizeof(signature));
+    }
     auto expectInspect = [&](const std::string &text, tcputty::PpkLoadResult expected, unsigned version,
                              const char *algorithm, const char *encryption, const char *messagePart) {
         if (!WriteText(temporary.path, text))
@@ -445,16 +580,24 @@ int main(int argc, char **argv)
         }
         tcputty::MemoryKey key;
         std::string error;
-        tcputty::PpkLoadResult actual = tcputty::LoadPpkV3Rsa(temporary.path.c_str(), key, error);
+        tcputty::PpkLoadResult actual = tcputty::LoadPpkV3Key(temporary.path.c_str(), key, error);
         if (actual != expected || (messagePart && !Contains(error, messagePart)))
         {
             fprintf(stderr, "Load mismatch: result=%d error=%s\n", static_cast<int>(actual), error.c_str());
             ++failures;
         }
-        if (expected == tcputty::PpkLoadResult::Success &&
-            (key.publicKeyFile.find("ssh-rsa ") != 0 || key.privateKeyPem.Empty()))
+        if (expected == tcputty::PpkLoadResult::Success && key.algorithm == tcputty::MemoryKey::Algorithm::Rsa &&
+            (key.publicKeyFile.find("ssh-rsa ") != 0 || key.privateKeyPem.Empty() || !key.privateKeySeed.Empty()))
         {
             fprintf(stderr, "A valid TEST-ONLY PPK did not produce an in-memory RSA key.\n");
+            ++failures;
+        }
+        if (expected == tcputty::PpkLoadResult::Success &&
+            key.algorithm == tcputty::MemoryKey::Algorithm::Ed25519 &&
+            (key.publicKeyFile.find("ssh-ed25519 ") != 0 || key.publicKeyBlob.Size() != 51 ||
+             key.publicKeyPoint.Size() != 32 || key.privateKeySeed.Size() != 32 || !key.privateKeyPem.Empty()))
+        {
+            fprintf(stderr, "A valid TEST-ONLY PPK did not produce an in-memory Ed25519 key.\n");
             ++failures;
         }
     };
@@ -467,17 +610,25 @@ int main(int argc, char **argv)
         }
         tcputty::MemoryKey key;
         std::string error;
-        tcputty::PpkLoadResult actual = tcputty::LoadPpkV3Rsa(
+        tcputty::PpkLoadResult actual = tcputty::LoadPpkV3Key(
             temporary.path.c_str(), reinterpret_cast<const unsigned char *>(passphrase), strlen(passphrase), key, error);
         if (actual != expected || (messagePart && !Contains(error, messagePart)))
         {
             fprintf(stderr, "Encrypted load mismatch: result=%d error=%s\n", static_cast<int>(actual), error.c_str());
             ++failures;
         }
-        if (expected == tcputty::PpkLoadResult::Success &&
-            (key.publicKeyFile.find("ssh-rsa ") != 0 || key.privateKeyPem.Empty()))
+        if (expected == tcputty::PpkLoadResult::Success && key.algorithm == tcputty::MemoryKey::Algorithm::Rsa &&
+            (key.publicKeyFile.find("ssh-rsa ") != 0 || key.privateKeyPem.Empty() || !key.privateKeySeed.Empty()))
         {
             fprintf(stderr, "A valid encrypted TEST-ONLY PPK did not produce an in-memory RSA key.\n");
+            ++failures;
+        }
+        if (expected == tcputty::PpkLoadResult::Success &&
+            key.algorithm == tcputty::MemoryKey::Algorithm::Ed25519 &&
+            (key.publicKeyFile.find("ssh-ed25519 ") != 0 || key.publicKeyBlob.Size() != 51 ||
+             key.publicKeyPoint.Size() != 32 || key.privateKeySeed.Size() != 32 || !key.privateKeyPem.Empty()))
+        {
+            fprintf(stderr, "A valid encrypted TEST-ONLY PPK did not produce an in-memory Ed25519 key.\n");
             ++failures;
         }
     };
@@ -555,9 +706,21 @@ int main(int argc, char **argv)
                                  "whole number");
     }
 
-    std::string ed25519 = valid;
-    ReplaceFirst(ed25519, "PuTTY-User-Key-File-3: ssh-rsa", "PuTTY-User-Key-File-3: ssh-ed25519");
-    expectInspect(ed25519, tcputty::PpkLoadResult::Unsupported, 3, "ssh-ed25519", "none", "ssh-ed25519");
+    expectInspect(validEd25519, tcputty::PpkLoadResult::Success, 3, "ssh-ed25519", "none", nullptr);
+    expectLoad(validEd25519, tcputty::PpkLoadResult::Success, nullptr);
+    expectLoad(WithLineEndings(validEd25519, "\r\n"), tcputty::PpkLoadResult::Success, nullptr);
+    expectInspect(encryptedEd25519, tcputty::PpkLoadResult::Success, 3, "ssh-ed25519", "aes256-cbc", nullptr);
+    expectLoad(encryptedEd25519, tcputty::PpkLoadResult::PassphraseRequired, "requires");
+    expectLoadWithPassphrase(encryptedEd25519, kEncryptedTestPassphrase, tcputty::PpkLoadResult::Success, nullptr);
+    expectLoadWithPassphrase(encryptedEd25519, "TEST-ONLY wrong passphrase", tcputty::PpkLoadResult::BadPassphrase,
+                             "incorrect");
+
+    expectLoad(mismatchedEd25519, tcputty::PpkLoadResult::Invalid, "do not match");
+
+    std::string unsupportedEd448 = validEd25519;
+    ReplaceFirst(unsupportedEd448, "PuTTY-User-Key-File-3: ssh-ed25519",
+                 "PuTTY-User-Key-File-3: ssh-ed448");
+    expectInspect(unsupportedEd448, tcputty::PpkLoadResult::Unsupported, 3, "ssh-ed448", "none", "supports only");
 
     expectInspect("not a private key\n", tcputty::PpkLoadResult::NotPpk, 0, "", "", "does not contain");
     expectLoad("PuTTY-User-Key-File-3: ssh-rsa\nEncryption: none\n", tcputty::PpkLoadResult::Invalid,
@@ -659,6 +822,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "PPK diagnostics failed: %d case(s).\n", failures);
         return 3;
     }
-    printf("PPK diagnostics passed with runtime-generated TEST-ONLY unencrypted and encrypted RSA keys.\n");
+    printf("PPK diagnostics passed with TEST-ONLY unencrypted and encrypted RSA/Ed25519 keys.\n");
     return 0;
 }

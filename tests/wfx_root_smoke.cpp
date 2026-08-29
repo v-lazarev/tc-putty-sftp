@@ -241,12 +241,13 @@ int wmain(int argc, wchar_t **argv)
     using Version = const char *(__cdecl *)(int);
     Version version = libssh2 ? Resolve<Version>(libssh2, "libssh2_version") : nullptr;
     FARPROC fromMemory = libssh2 ? GetProcAddress(libssh2, "libssh2_userauth_publickey_frommemory") : nullptr;
+    FARPROC signCallback = libssh2 ? GetProcAddress(libssh2, "libssh2_userauth_publickey") : nullptr;
     const char *versionText = version ? version(0) : nullptr;
 
-    bool transportOk = libssh2 && versionText && fromMemory;
-    printf("WFX root smoke passed: %u root connection(s), expected=%s, libssh2=%s, frommemory=%s.\n", liveSessions,
+    bool transportOk = libssh2 && versionText && fromMemory && signCallback;
+    printf("WFX root smoke passed: %u root connection(s), expected=%s, libssh2=%s, frommemory=%s, callback=%s.\n", liveSessions,
            connect || expect ? (foundExpected ? "yes" : "no") : "n/a", versionText ? versionText : "missing",
-           fromMemory ? "yes" : "no");
+           fromMemory ? "yes" : "no", signCallback ? "yes" : "no");
 
     bool connectOk = true;
     if (connect)

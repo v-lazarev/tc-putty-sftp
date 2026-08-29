@@ -22,7 +22,7 @@ the code baseline and the original 3.10 snapshot retained in its history. See
 - Session name escaping, Unicode registry access, default settings, custom SSH
   ports, usernames, and private-key paths are imported.
 - Pageant is disabled for generated PuTTY entries.
-- Unencrypted and AES-256-CBC-encrypted PuTTY PPK v3 RSA keys are
+- Unencrypted and AES-256-CBC-encrypted PuTTY PPK v3 RSA and Ed25519 keys are
   authenticated directly from memory. Encrypted keys use the normal hidden
   Total Commander passphrase prompt with up to three attempts. Cancelling it
   does not fall through to an unrelated server-password prompt.
@@ -48,24 +48,28 @@ accompanied by a SHA-256 checksum file.
 The built-in PPK loader intentionally accepts only:
 
 - `PuTTY-User-Key-File-3`
-- `ssh-rsa`
+- `ssh-rsa` or `ssh-ed25519`
 - `Encryption: none` or `Encryption: aes256-cbc`
 - `Argon2d`, `Argon2i`, or `Argon2id` key derivation for encrypted keys
-- RSA keys from 2048 through 8192 bits
+- RSA keys from 2048 through 8192 bits, or 32-byte Ed25519 seeds
 
 It validates the PPK HMAC-SHA-256, strictly parses SSH strings and positive
-mpints, imports the key through Windows CNG, verifies it by signing, and clears
-private working buffers after authentication. Private blobs, PEM data, and MAC
-inputs are not logged. Connection-attempt logs record only whether key files
-are configured; they do not include private- or public-key paths.
+mpints, validates RSA keys through Windows CNG, derives and compares Ed25519
+public keys, verifies keys by signing, and clears private working buffers after
+authentication. RSA uses libssh2's in-memory key loader. Ed25519 uses
+libssh2's public-key signing callback, so neither path writes a converted key
+to disk. Private blobs, PEM data, seeds, and MAC inputs are not logged.
+Connection-attempt logs record only whether key files are configured; they do
+not include private- or public-key paths.
 
 Encrypted keys are bounded before Argon2 runs: at most 256 MiB memory, 1024
 passes, 16 lanes, 8 GiB of aggregate memory work, a 64-byte salt, and a
 4096-byte passphrase. AES-256-CBC and HMAC-SHA-256 use Windows CNG. The pinned
 official Argon2 reference implementation runs without worker threads and
-clears its internal memory before release.
+clears its internal memory before release. Ed25519 signing uses pinned
+Monocypher 4.0.3; its secret working buffers are wiped after every operation.
 
-PPK v2, Ed25519, ECDSA, PuTTY proxy/jump settings, and other PuTTY-specific
+PPK v2, ECDSA, PuTTY proxy/jump settings, and other PuTTY-specific
 connection commands are not yet imported. A session with proxy settings is
 blocked instead of silently connecting directly. Existing OpenSSH/PEM
 authentication for ordinary INI connections is unchanged.
@@ -88,7 +92,7 @@ Requirements: Windows, Visual Studio 2026 with C++, CMake, and PowerShell 7.
 ```powershell
 git clone --recurse-submodules <repository-url>
 cd tc-putty-sftp
-pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.2.2
+pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.3.0
 ```
 
 `bin/build-libssh2.ps1` pins the submodule revision and builds shared x86/x64
@@ -100,9 +104,10 @@ architectures, creates the release ZIP, and writes its SHA-256 checksum.
 `tests/smoke_tests.cpp` covers PuTTY name decoding, live registry enumeration,
 INI overlay preservation, and optional PPK parsing/CNG conversion.
 `tests/ppk_diagnostics_tests.cpp` generates ephemeral unencrypted and encrypted
-TEST-ONLY RSA keys at runtime. It covers every PPK v3 Argon2 flavour, correct,
-wrong, missing, and empty passphrases, bounded KDF parameters, official Argon2
-and AES reference vectors, LF/CRLF/CR files, and malformed inputs.
+TEST-ONLY RSA and Ed25519 keys at runtime. It covers every PPK v3 Argon2
+flavour, correct, wrong, missing, and empty passphrases, bounded KDF
+parameters, official Argon2/AES and RFC 8032 Ed25519 reference vectors,
+LF/CRLF/CR files, and malformed inputs.
 
 `tests/wfx_root_smoke.cpp` loads the compiled WFX through the public Total
 Commander API, enumerates its root, verifies the packaged transport, and can

@@ -4,12 +4,14 @@ Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
 
 This experimental fork adds a live, read-only view of saved PuTTY SSH
 sessions. It can use unencrypted and AES-256-CBC-encrypted PuTTY PPK v3 RSA
-keys directly from memory, without Pageant, puttygen, or a temporary converted
-private-key file. Encrypted keys use a hidden passphrase prompt.
+and Ed25519 keys directly from memory, without Pageant, puttygen, or a
+temporary converted private-key file. Encrypted keys use a hidden passphrase
+prompt.
 
-Current PPK scope: v3, ssh-rsa, Encryption none/aes256-cbc, Argon2d/i/id, and
-RSA 2048-8192 bits. PPK v2, ECDSA/Ed25519 keys, and PuTTY proxy/jump settings
-are not imported. Sessions with proxy settings are blocked.
+Current PPK scope: v3, ssh-rsa/ssh-ed25519, Encryption none/aes256-cbc,
+Argon2d/i/id, RSA 2048-8192 bits, and 32-byte Ed25519 seeds. PPK v2, ECDSA
+keys, and PuTTY proxy/jump settings are not imported. Sessions with proxy
+settings are blocked.
 Unsupported PPK metadata is identified before a network connection is opened.
 Key-file paths and private key material are not written to connection logs.
 

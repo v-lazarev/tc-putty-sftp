@@ -1,5 +1,5 @@
 [plugininstall]
-description=TC PuTTY SFTP (live PuTTY sessions, in-memory PPK v3 RSA)
+description=TC PuTTY SFTP (live PuTTY sessions, in-memory PPK v3 RSA/Ed25519)
 type=wfx
 file=sftpplug.wfx
 defaultdir=sftpplug

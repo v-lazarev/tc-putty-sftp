@@ -8,6 +8,7 @@
 #include "sftpfunc.h"
 #include "fsplugin.h"
 #include "multiserver.h"
+#include "ed25519_crypto.h"
 #include "ppk_v3_rsa.h"
 #include "putty_session_provider.h"
 #include "resource.h"
@@ -941,23 +942,43 @@ void libssh2_trace_handler_callback(LIBSSH2_SESSION *session, void *param, const
     LogProc(PluginNumber, MSGTYPE_DETAILS, (char *)error);
 }
 
-int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKeyFile, char *statusBuffer,
+struct Ed25519SignContext
+{
+    const unsigned char *seed;
+    const unsigned char *publicKey;
+};
+
+LIBSSH2_USERAUTH_PUBLICKEY_SIGN_FUNC(Ed25519SignCallback)
+{
+    (void)session;
+    if (!sig || !sig_len || !abstract || !*abstract || (!data && data_len != 0))
+        return LIBSSH2_ERROR_INVAL;
+    *sig = nullptr;
+    *sig_len = 0;
+    Ed25519SignContext *context = static_cast<Ed25519SignContext *>(*abstract);
+    unsigned char *output = static_cast<unsigned char *>(malloc(64));
+    if (!output)
+        return LIBSSH2_ERROR_ALLOC;
+    if (!tcputty::Ed25519Sign(context->seed, context->publicKey, data, data_len, output))
+    {
+        SecureZeroMemory(output, 64);
+        free(output);
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED;
+    }
+    *sig = output;
+    *sig_len = 64;
+    return 0;
+}
+
+int AuthenticatePpkV3Key(pConnectSettings ConnectSettings, const char *privateKeyFile, char *statusBuffer,
                          int statusBufferSize, int *loop, DWORD *lasttime, bool *localErrorShown)
 {
     if (localErrorShown)
         *localErrorShown = false;
-    if (!libssh2_userauth_publickey_frommemory)
-    {
-        char error[] = "The loaded libssh2.dll does not support in-memory key authentication.";
-        ShowError(error);
-        if (localErrorShown)
-            *localErrorShown = true;
-        return LIBSSH2_ERROR_METHOD_NOT_SUPPORTED;
-    }
 
     tcputty::MemoryKey memoryKey;
     std::string error;
-    tcputty::PpkLoadResult loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, memoryKey, error);
+    tcputty::PpkLoadResult loadResult = tcputty::LoadPpkV3Key(privateKeyFile, memoryKey, error);
     bool storedPassphraseTried = false;
     unsigned interactivePassphraseAttempts = 0;
     const unsigned maximumInteractivePassphraseAttempts = 3;
@@ -1014,7 +1035,7 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
             }
             ++interactivePassphraseAttempts;
         }
-        loadResult = tcputty::LoadPpkV3Rsa(privateKeyFile, reinterpret_cast<const unsigned char *>(passphrase),
+        loadResult = tcputty::LoadPpkV3Key(privateKeyFile, reinterpret_cast<const unsigned char *>(passphrase),
                                            strlen(passphrase), memoryKey, error);
         OverwriteWithZeroes(passphrase, sizeof(passphrase));
     }
@@ -1031,22 +1052,42 @@ int AuthenticatePpkV3Rsa(pConnectSettings ConnectSettings, const char *privateKe
                                                                  : LIBSSH2_ERROR_FILE;
     }
 
+    if ((memoryKey.algorithm == tcputty::MemoryKey::Algorithm::Rsa &&
+         !libssh2_userauth_publickey_frommemory) ||
+        (memoryKey.algorithm == tcputty::MemoryKey::Algorithm::Ed25519 && !libssh2_userauth_publickey))
+    {
+        char missingApi[] = "The loaded libssh2.dll does not support the required in-memory key authentication API.";
+        ShowError(missingApi);
+        if (localErrorShown)
+            *localErrorShown = true;
+        return LIBSSH2_ERROR_METHOD_NOT_SUPPORTED;
+    }
+
     strlcpy(statusBuffer, "Auth via PuTTY PPK v3 public key for user: ", statusBufferSize - 1);
     strlcat(statusBuffer, ConnectSettings->user, statusBufferSize - 1);
     ShowStatus(statusBuffer);
     LoadStr(statusBuffer, IDS_AUTH_PUBKEY);
 
     int auth = 0;
-    while ((auth = libssh2_userauth_publickey_frommemory(ConnectSettings->session, ConnectSettings->user,
-                                                         strlen(ConnectSettings->user), memoryKey.publicKeyFile.data(),
-                                                         memoryKey.publicKeyFile.size(),
-                                                         reinterpret_cast<const char *>(memoryKey.privateKeyPem.Data()),
-                                                         memoryKey.privateKeyPem.Size(), "")) == LIBSSH2_ERROR_EAGAIN)
+    Ed25519SignContext signContext = {memoryKey.privateKeySeed.Data(), memoryKey.publicKeyPoint.Data()};
+    void *signContextPointer = &signContext;
+    do
     {
+        if (memoryKey.algorithm == tcputty::MemoryKey::Algorithm::Ed25519)
+            auth = libssh2_userauth_publickey(ConnectSettings->session, ConnectSettings->user,
+                                              memoryKey.publicKeyBlob.Data(), memoryKey.publicKeyBlob.Size(),
+                                              Ed25519SignCallback, &signContextPointer);
+        else
+            auth = libssh2_userauth_publickey_frommemory(
+                ConnectSettings->session, ConnectSettings->user, strlen(ConnectSettings->user),
+                memoryKey.publicKeyFile.data(), memoryKey.publicKeyFile.size(),
+                reinterpret_cast<const char *>(memoryKey.privateKeyPem.Data()), memoryKey.privateKeyPem.Size(), "");
+        if (auth != LIBSSH2_ERROR_EAGAIN)
+            break;
         if (ProgressLoop(statusBuffer, 60, 70, loop, lasttime))
             break;
         IsSocketReadable(ConnectSettings->sock);
-    }
+    } while (true);
     return auth;
 }
 
@@ -1951,7 +1992,7 @@ int SftpConnect(pConnectSettings ConnectSettings)
             if (tcputty::HasPpkExtension(privkeyfile))
             {
                 bool localErrorShown = false;
-                auth = AuthenticatePpkV3Rsa(ConnectSettings, privkeyfile, buf, sizeof(buf), &loop, &lasttime,
+                auth = AuthenticatePpkV3Key(ConnectSettings, privkeyfile, buf, sizeof(buf), &loop, &lasttime,
                                             &localErrorShown);
                 if (auth == LIBSSH2_ERROR_AUTHENTICATION_FAILED)
                     auth_pw = 1;

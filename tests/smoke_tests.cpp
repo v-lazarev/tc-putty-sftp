@@ -56,15 +56,22 @@ int main(int argc, char **argv)
     {
         tcputty::MemoryKey key;
         std::string error;
-        if (tcputty::LoadPpkV3Rsa(argv[1], key, error) != tcputty::PpkLoadResult::Success)
+        if (tcputty::LoadPpkV3Key(argv[1], key, error) != tcputty::PpkLoadResult::Success)
         {
-            fprintf(stderr, "PPK v3 RSA in-memory conversion failed: %s\n", error.c_str());
+            fprintf(stderr, "PPK v3 in-memory conversion failed: %s\n", error.c_str());
             return 5;
         }
         static const char pemHeader[] = "-----BEGIN RSA PRIVATE KEY-----\n";
-        if (key.privateKeyPem.Size() <= sizeof(pemHeader) ||
-            memcmp(key.privateKeyPem.Data(), pemHeader, sizeof(pemHeader) - 1) != 0 ||
-            key.publicKeyFile.compare(0, 8, "ssh-rsa ") != 0)
+        bool validRepresentation = false;
+        if (key.algorithm == tcputty::MemoryKey::Algorithm::Rsa)
+            validRepresentation = key.privateKeyPem.Size() > sizeof(pemHeader) &&
+                                  memcmp(key.privateKeyPem.Data(), pemHeader, sizeof(pemHeader) - 1) == 0 &&
+                                  key.publicKeyFile.compare(0, 8, "ssh-rsa ") == 0;
+        else if (key.algorithm == tcputty::MemoryKey::Algorithm::Ed25519)
+            validRepresentation = key.privateKeySeed.Size() == 32 && key.publicKeyPoint.Size() == 32 &&
+                                  key.publicKeyBlob.Size() == 51 &&
+                                  key.publicKeyFile.compare(0, 12, "ssh-ed25519 ") == 0;
+        if (!validRepresentation)
         {
             fprintf(stderr, "PPK conversion returned an invalid in-memory representation.\n");
             return 6;
