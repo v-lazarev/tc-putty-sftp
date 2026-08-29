@@ -8,6 +8,21 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+### Added
+
+- In-memory authentication with unencrypted and AES-256-CBC-encrypted PPK v3
+  Ed25519 keys, without Pageant, puttygen, or temporary converted key files.
+- Runtime-generated Ed25519 PPK diagnostics on x86 and x64, plus RFC 8032 key
+  derivation, signing, and verification vectors.
+
+### Security
+
+- Ed25519 PPK public/private key consistency is verified before use, and seed,
+  expanded-secret, signature-working, decrypted-key, and passphrase buffers are
+  cleared after use.
+- Ed25519 operations use pinned Monocypher 4.0.3, including its upstream EdDSA
+  timing-leak fix, with complete source provenance and license notices.
+
 ## [0.2.2] - 2026-08-28
 
 ### Changed

@@ -70,7 +70,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)third_party\argon2\include;$(ProjectDir)third_party\argon2\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)third_party\argon2\include;$(ProjectDir)third_party\argon2\src;$(ProjectDir)third_party\monocypher;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>ARGON2_NO_THREADS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -277,6 +277,7 @@
     <ClCompile Include="cunicode.cpp" />
     <ClCompile Include="CVTUTF.C" />
     <ClCompile Include="ftpdir.cpp" />
+    <ClCompile Include="ed25519_crypto.cpp" />
     <ClCompile Include="multiserver.cpp" />
     <ClCompile Include="ppk_v3_rsa.cpp" />
     <ClCompile Include="putty_session_provider.cpp" />
@@ -287,6 +288,8 @@
     <ClCompile Include="third_party\argon2\src\core.c" />
     <ClCompile Include="third_party\argon2\src\encoding.c" />
     <ClCompile Include="third_party\argon2\src\ref.c" />
+    <ClCompile Include="third_party\monocypher\monocypher-ed25519.c" />
+    <ClCompile Include="third_party\monocypher\monocypher.c" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -298,6 +301,7 @@
     <ClInclude Include="CVTUTF.H" />
     <ClInclude Include="fsplugin.h" />
     <ClInclude Include="ftpdir.h" />
+    <ClInclude Include="ed25519_crypto.h" />
     <ClInclude Include="libssh2.h" />
     <ClInclude Include="libssh2_sftp.h" />
     <ClInclude Include="multiserver.h" />
@@ -314,6 +318,8 @@
     <ClInclude Include="third_party\argon2\src\encoding.h" />
     <ClInclude Include="third_party\argon2\src\genkat.h" />
     <ClInclude Include="third_party\argon2\src\thread.h" />
+    <ClInclude Include="third_party\monocypher\monocypher-ed25519.h" />
+    <ClInclude Include="third_party\monocypher\monocypher.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>

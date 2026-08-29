@@ -1,4 +1,5 @@
 #include "ppk_v3_rsa.h"
+#include "ed25519_crypto.h"
 #include "third_party/argon2/include/argon2.h"
 
 #include <windows.h>
@@ -79,6 +80,14 @@ void SecureWipe(std::vector<unsigned char> &bytes)
 {
     if (!bytes.empty())
         SecureZeroMemory(bytes.data(), bytes.size());
+}
+
+bool ConstantTimeEqual(const unsigned char *left, const unsigned char *right, size_t size)
+{
+    unsigned char difference = 0;
+    for (size_t i = 0; i < size; ++i)
+        difference |= static_cast<unsigned char>(left[i] ^ right[i]);
+    return difference == 0;
 }
 
 bool CheckedAdd(size_t left, size_t right, size_t &result)
@@ -211,9 +220,10 @@ tcputty::PpkLoadResult ParsePpkHeader(const std::vector<LineView> &lines, PpkHea
         errorMessage = message;
         return tcputty::PpkLoadResult::Unsupported;
     }
-    if (info.algorithm != "ssh-rsa")
+    if (info.algorithm != "ssh-rsa" && info.algorithm != "ssh-ed25519")
     {
-        snprintf(message, sizeof(message), "This PPK uses %s; this release currently supports only ssh-rsa.",
+        snprintf(message, sizeof(message),
+                 "This PPK uses %s; this release currently supports only ssh-rsa and ssh-ed25519.",
                  info.algorithm.c_str());
         errorMessage = message;
         return tcputty::PpkLoadResult::Unsupported;
@@ -1066,11 +1076,15 @@ PpkLoadResult InspectPpkFile(const char *path, PpkKeyInfo &info, std::string &er
     return ParseOuterPpk(lines, parsed, info, errorMessage);
 }
 
-PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, size_t passphraseLength, MemoryKey &key,
+PpkLoadResult LoadPpkV3Key(const char *path, const unsigned char *passphrase, size_t passphraseLength, MemoryKey &key,
                            std::string &errorMessage)
 {
+    key.algorithm = MemoryKey::Algorithm::Rsa;
     key.publicKeyFile.clear();
+    key.publicKeyBlob.Clear();
+    key.publicKeyPoint.Clear();
     key.privateKeyPem.Clear();
+    key.privateKeySeed.Clear();
     errorMessage.clear();
 
     SecureBuffer file;
@@ -1158,6 +1172,42 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, si
     }
     SecureZeroMemory(expectedMac, sizeof(expectedMac));
 
+    if (info.algorithm == "ssh-ed25519")
+    {
+        SshReader publicReader(publicBlob);
+        ByteView publicAlgorithm;
+        ByteView publicPoint;
+        if (!publicReader.ReadString(publicAlgorithm) || !Equals(publicAlgorithm, "ssh-ed25519") ||
+            !publicReader.ReadString(publicPoint) || publicPoint.size != 32 || !publicReader.AtEnd())
+        {
+            errorMessage = "The PPK public Ed25519 blob is invalid.";
+            return PpkLoadResult::Invalid;
+        }
+        SshReader privateReader(privateBlob);
+        ByteView privateSeed;
+        if (!privateReader.ReadString(privateSeed) || privateSeed.size != 32 ||
+            (parsed.encrypted ? privateReader.Remaining() > 15 : !privateReader.AtEnd()))
+        {
+            errorMessage = "The PPK private Ed25519 blob is invalid.";
+            return PpkLoadResult::Invalid;
+        }
+        unsigned char derivedPublic[32] = {};
+        bool pairMatches = Ed25519DerivePublic(privateSeed.data, derivedPublic) &&
+                           ConstantTimeEqual(derivedPublic, publicPoint.data, sizeof(derivedPublic));
+        SecureZeroMemory(derivedPublic, sizeof(derivedPublic));
+        if (!pairMatches)
+        {
+            errorMessage = "The PPK Ed25519 public and private keys do not match.";
+            return PpkLoadResult::Invalid;
+        }
+        key.algorithm = MemoryKey::Algorithm::Ed25519;
+        key.publicKeyBlob.Append(publicBlob.Data(), publicBlob.Size());
+        key.publicKeyPoint.Append(publicPoint.data, publicPoint.size);
+        key.privateKeySeed.Append(privateSeed.data, privateSeed.size);
+        key.publicKeyFile = "ssh-ed25519 " + Base64Public(publicBlob) + "\n";
+        return PpkLoadResult::Success;
+    }
+
     SshReader publicReader(publicBlob);
     ByteView publicAlgorithm;
     ByteView exponent;
@@ -1168,6 +1218,7 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, si
         errorMessage = "The PPK public RSA blob is invalid.";
         return PpkLoadResult::Invalid;
     }
+
     SshReader privateReader(privateBlob);
     ByteView privateExponent;
     ByteView prime1;
@@ -1191,8 +1242,9 @@ PpkLoadResult LoadPpkV3Rsa(const char *path, const unsigned char *passphrase, si
     return PpkLoadResult::Success;
 }
 
-PpkLoadResult LoadPpkV3Rsa(const char *path, MemoryKey &key, std::string &errorMessage)
+PpkLoadResult LoadPpkV3Key(const char *path, MemoryKey &key, std::string &errorMessage)
 {
-    return LoadPpkV3Rsa(path, nullptr, 0, key, errorMessage);
+    return LoadPpkV3Key(path, nullptr, 0, key, errorMessage);
 }
+
 } // namespace tcputty

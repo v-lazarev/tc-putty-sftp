@@ -35,7 +35,9 @@ $PackageDocuments = @(
 	@{ Name = "THIRD_PARTY_NOTICES.md"; Path = (Join-Path $ProjectRoot "THIRD_PARTY_NOTICES.md") },
 	@{ Name = "libssh2-COPYING"; Path = (Join-Path $ProjectRoot "third_party\libssh2\COPYING") },
 	@{ Name = "argon2-LICENSE"; Path = (Join-Path $ProjectRoot "third_party\argon2\LICENSE") },
-	@{ Name = "argon2-UPSTREAM.md"; Path = (Join-Path $ProjectRoot "third_party\argon2\UPSTREAM.md") }
+	@{ Name = "argon2-UPSTREAM.md"; Path = (Join-Path $ProjectRoot "third_party\argon2\UPSTREAM.md") },
+	@{ Name = "monocypher-LICENCE.md"; Path = (Join-Path $ProjectRoot "third_party\monocypher\LICENCE.md") },
+	@{ Name = "monocypher-UPSTREAM.md"; Path = (Join-Path $ProjectRoot "third_party\monocypher\UPSTREAM.md") }
 )
 
 foreach ($f in @($Wfx32, $Wfx64, $LibSsh2X86, $LibSsh2X64) + ($PackageDocuments | ForEach-Object { $_.Path })) {

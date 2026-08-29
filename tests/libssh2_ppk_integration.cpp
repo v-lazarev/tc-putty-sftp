@@ -3,11 +3,13 @@
 #include <windows.h>
 
 #include "../ppk_v3_rsa.h"
+#include "../ed25519_crypto.h"
 #include "../putty_session_provider.h"
 #include "../third_party/libssh2/include/libssh2.h"
 #include "../third_party/libssh2/include/libssh2_sftp.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,32 @@ class SocketGuard
     }
     SOCKET socket = INVALID_SOCKET;
 };
+
+struct Ed25519SignContext
+{
+    const unsigned char *seed;
+    const unsigned char *publicKey;
+};
+
+LIBSSH2_USERAUTH_PUBLICKEY_SIGN_FUNC(SignEd25519)
+{
+    (void)session;
+    if (!sig || !sig_len || !abstract || !*abstract || (!data && data_len != 0))
+        return LIBSSH2_ERROR_INVAL;
+    Ed25519SignContext *context = static_cast<Ed25519SignContext *>(*abstract);
+    *sig = static_cast<unsigned char *>(malloc(64));
+    if (!*sig)
+        return LIBSSH2_ERROR_ALLOC;
+    if (!tcputty::Ed25519Sign(context->seed, context->publicKey, data, data_len, *sig))
+    {
+        SecureZeroMemory(*sig, 64);
+        free(*sig);
+        *sig = nullptr;
+        return LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED;
+    }
+    *sig_len = 64;
+    return 0;
+}
 } // namespace
 
 int wmain(int argc, wchar_t **argv)
@@ -77,7 +105,7 @@ int wmain(int argc, wchar_t **argv)
 
     tcputty::MemoryKey memoryKey;
     std::string keyError;
-    if (tcputty::LoadPpkV3Rsa(keyPath, memoryKey, keyError) != tcputty::PpkLoadResult::Success)
+    if (tcputty::LoadPpkV3Key(keyPath, memoryKey, keyError) != tcputty::PpkLoadResult::Success)
         return 6;
 
     HMODULE module = LoadLibraryW(argv[1]);
@@ -92,6 +120,8 @@ int wmain(int argc, wchar_t **argv)
     using HostKeyHash = const char *(__cdecl *)(LIBSSH2_SESSION *, int);
     using AuthMemory = int(__cdecl *)(LIBSSH2_SESSION *, const char *, size_t, const char *, size_t, const char *,
                                       size_t, const char *);
+    using AuthCallback = int(__cdecl *)(LIBSSH2_SESSION *, const char *, const unsigned char *, size_t,
+                                        LIBSSH2_USERAUTH_PUBLICKEY_SIGN_FUNC((*)), void **);
     using SftpInit = LIBSSH2_SFTP *(__cdecl *)(LIBSSH2_SESSION *);
     using SftpShutdown = int(__cdecl *)(LIBSSH2_SFTP *);
     using SessionDisconnect = int(__cdecl *)(LIBSSH2_SESSION *, int, const char *, const char *);
@@ -104,11 +134,13 @@ int wmain(int argc, wchar_t **argv)
     SessionSetBlocking setBlocking = Resolve<SessionSetBlocking>(module, "libssh2_session_set_blocking");
     HostKeyHash hostKeyHash = Resolve<HostKeyHash>(module, "libssh2_hostkey_hash");
     AuthMemory authenticate = Resolve<AuthMemory>(module, "libssh2_userauth_publickey_frommemory");
+    AuthCallback authenticateCallback = Resolve<AuthCallback>(module, "libssh2_userauth_publickey");
     SftpInit sftpInit = Resolve<SftpInit>(module, "libssh2_sftp_init");
     SftpShutdown sftpShutdown = Resolve<SftpShutdown>(module, "libssh2_sftp_shutdown");
     SessionDisconnect disconnect = Resolve<SessionDisconnect>(module, "libssh2_session_disconnect_ex");
     SessionFree sessionFree = Resolve<SessionFree>(module, "libssh2_session_free");
     if (!initialize || !shutdown || !sessionInit || !handshake || !setBlocking || !hostKeyHash || !authenticate ||
+        !authenticateCallback ||
         !sftpInit || !sftpShutdown || !disconnect || !sessionFree)
     {
         FreeLibrary(module);
@@ -153,12 +185,24 @@ int wmain(int argc, wchar_t **argv)
         setBlocking(session, 1);
     bool handshakeOk = session && handshake(session, connection.socket) == 0;
     bool hostKeyAvailable = handshakeOk && hostKeyHash(session, LIBSSH2_HOSTKEY_HASH_SHA256) != nullptr;
-    int authResult = hostKeyAvailable
-                         ? authenticate(session, user, strlen(user), memoryKey.publicKeyFile.data(),
-                                        memoryKey.publicKeyFile.size(),
-                                        reinterpret_cast<const char *>(memoryKey.privateKeyPem.Data()),
-                                        memoryKey.privateKeyPem.Size(), "")
-                         : -1;
+    int authResult = -1;
+    if (hostKeyAvailable)
+    {
+        if (memoryKey.algorithm == tcputty::MemoryKey::Algorithm::Ed25519)
+        {
+            Ed25519SignContext context = {memoryKey.privateKeySeed.Data(), memoryKey.publicKeyPoint.Data()};
+            void *contextPointer = &context;
+            authResult = authenticateCallback(session, user, memoryKey.publicKeyBlob.Data(),
+                                              memoryKey.publicKeyBlob.Size(), SignEd25519, &contextPointer);
+        }
+        else
+        {
+            authResult = authenticate(session, user, strlen(user), memoryKey.publicKeyFile.data(),
+                                      memoryKey.publicKeyFile.size(),
+                                      reinterpret_cast<const char *>(memoryKey.privateKeyPem.Data()),
+                                      memoryKey.privateKeyPem.Size(), "");
+        }
+    }
     LIBSSH2_SFTP *sftp = authResult == 0 ? sftpInit(session) : nullptr;
     bool success = sftp != nullptr;
 

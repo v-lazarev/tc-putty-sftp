@@ -27,3 +27,12 @@ the official Argon2 reference implementation, pinned as documented in
 Khovratovich, Jean-Philippe Aumasson, and Samuel Neves. The code is available
 under CC0 1.0 Universal or the Apache License 2.0, at the user's option. The
 complete upstream license text is in `third_party/argon2/LICENSE`.
+
+## Monocypher
+
+Ed25519 key derivation and signing use selected, unmodified files from
+Monocypher 4.0.3, pinned as documented in
+`third_party/monocypher/UPSTREAM.md`. Copyright 2017-2023 Loup Vaillant and
+other contributors listed in the source files. Monocypher is available under
+the 2-clause BSD license or CC0 1.0 Universal, at the user's option. The
+complete upstream license text is in `third_party/monocypher/LICENCE.md`.

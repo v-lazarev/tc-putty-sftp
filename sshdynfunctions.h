@@ -30,6 +30,9 @@ FUNCDEF2(LIBSSH2_API int, libssh2_userauth_publickey_frommemory,
          (LIBSSH2_SESSION * session, const char *username, size_t username_len, const char *publickeyfiledata,
           size_t publickeyfiledata_len, const char *privatekeyfiledata, size_t privatekeyfiledata_len,
           const char *passphrase));
+FUNCDEF2(LIBSSH2_API int, libssh2_userauth_publickey,
+         (LIBSSH2_SESSION * session, const char *username, const unsigned char *pubkeydata, size_t pubkeydata_len,
+          LIBSSH2_USERAUTH_PUBLICKEY_SIGN_FUNC((*sign_callback)), void **abstract));
 FUNCDEF(LIBSSH2_API int, libssh2_userauth_hostbased_fromfile_ex,
         (LIBSSH2_SESSION * session, const char *username, unsigned int username_len, const char *publickey,
          const char *privatekey, const char *passphrase, const char *hostname, unsigned int hostname_len,
