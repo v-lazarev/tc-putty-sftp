@@ -92,7 +92,7 @@ Requirements: Windows, Visual Studio 2026 with C++, CMake, and PowerShell 7.
 ```powershell
 git clone --recurse-submodules <repository-url>
 cd tc-putty-sftp
-pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.3.0
+pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.3.1
 ```
 
 `bin/build-libssh2.ps1` pins the submodule revision and builds shared x86/x64
