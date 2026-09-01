@@ -1,4 +1,4 @@
-TC PuTTY SFTP 0.3.0 (32 bit+64 bit)
+TC PuTTY SFTP 0.3.1 (32 bit+64 bit)
 Based on Secure FTP plugin 3.21
 Copyright (C) 2008-2026 Christian Ghisler, all rights reserved
 
