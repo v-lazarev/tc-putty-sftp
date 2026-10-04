@@ -8,6 +8,8 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-04
+
 ### Changed
 
 - Updated the pinned libssh2 development snapshot from `c755785` to
@@ -128,7 +130,8 @@ while it remains in the 0.x development series.
   proxy configurations.
 - Reproducible x86/x64 build, packaging, smoke, WFX, and integration harnesses.
 
-[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/v-lazarev/tc-putty-sftp/compare/v0.2.1...v0.2.2
