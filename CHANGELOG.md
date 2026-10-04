@@ -8,6 +8,18 @@ while it remains in the 0.x development series.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the pinned libssh2 development snapshot from `c755785` to
+  `2e17174` after x86/x64 builds and live PPK/SFTP regression testing.
+
+### Fixed
+
+- Enabled WinCNG ECDSA/ECDH support in the bundled libssh2 builds so the
+  plugin can negotiate `ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, or
+  `ecdh-sha2-nistp521` with modern SSH servers that disable classical
+  Diffie-Hellman key exchange.
+
 ## [0.3.1] - 2026-09-01
 
 ### Changed
