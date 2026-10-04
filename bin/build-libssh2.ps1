@@ -47,6 +47,7 @@ function Build-Architecture([string]$Name, [string]$Platform, [string]$Destinati
 	Write-Host "=== Configuring libssh2 $Name ===" -ForegroundColor Cyan
 	& $CMake -S $SourceDir -B $buildDirectory -G "Visual Studio 18 2026" -A $Platform `
 		-DCRYPTO_BACKEND=WinCNG `
+		-DENABLE_ECDSA_WINCNG=ON `
 		-DBUILD_SHARED_LIBS=ON `
 		-DBUILD_STATIC_LIBS=OFF `
 		-DBUILD_EXAMPLES=OFF `

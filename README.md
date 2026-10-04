@@ -83,7 +83,9 @@ authentication for ordinary INI connections is unchanged.
 4. Refresh the root after adding or changing a PuTTY session.
 
 The package contains separate x86/x64 WFX files and matching WinCNG
-`libssh2.dll` files. Do not replace the x64 DLL with the root x86 DLL.
+`libssh2.dll` files. The bundled transport enables WinCNG ECDH for modern SSH
+key exchange and therefore targets Windows 10 or newer. Do not replace the x64
+DLL with the root x86 DLL.
 
 ## Build
 
@@ -96,8 +98,9 @@ pwsh -NoProfile -File .\bin\release.ps1 -Configuration Release -Version 0.3.1
 ```
 
 `bin/build-libssh2.ps1` pins the submodule revision and builds shared x86/x64
-libssh2 with the Windows CNG backend. `bin/release.ps1` then builds both WFX
-architectures, creates the release ZIP, and writes its SHA-256 checksum.
+libssh2 with the Windows CNG backend and WinCNG ECDSA/ECDH enabled.
+`bin/release.ps1` then builds both WFX architectures, creates the release ZIP,
+and writes its SHA-256 checksum.
 
 ## Tests
 
